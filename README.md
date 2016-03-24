@@ -1,10 +1,12 @@
 IO-Engine is a basic C/S socket model with **no protocol**!
 
-It provide a NIO model for message transport
+It only provide a NIO model for message transport
 
-Server: a server is a set of transports
+### Server: 
 
-how to create a server
+> a server is a set of transports
+
+- [x] how to create a server
 
 ```java
 Engine.server()
@@ -31,9 +33,11 @@ Engine.server()
         .listen(8090);
 ```
 
-Client: a client is a transport
+### Client:
 
-how to create a client
+> a client is a transport
+
+- [x] how to create a client
 
 ```java
 Client client = Engine.client()
@@ -56,19 +60,20 @@ Client client = Engine.client()
         });
 ```
 
-then I wanna connect to server
+- [x] I wanna connect to server
 
 ```java
 client.connect("localhost", 8090);
 ```
 
-and I wanna send a message to server
+- [x] I wanna send a message to server
 
 ```java
 client.send("how are you");
 ```
 
-or I wanna broadcast messages from server to client
+- [x] I wanna broadcast messages from server to client
+
 ```java
 server.forEach(transport -> transport.send("hello everyone!"));
 ```

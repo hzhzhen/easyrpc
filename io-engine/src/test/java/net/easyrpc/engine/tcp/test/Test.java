@@ -23,8 +23,8 @@ public class Test {
                         error.printStackTrace()
                 )
                 .onMessage((transport, message) -> {
-                    //transport here is
-                    //message here is a byte array
+                    //transport here refer where message comes from
+                    //message here is a byte array, for the sake of no protocol
                     //just encode/decode it by your protocol!
                     try {
                         System.out.printf("server received message:%s", new String(message, "UTF-8"));
