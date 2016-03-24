@@ -1,0 +1,18 @@
+group 'net.easyrpc'
+version project_version
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.1"
+    }
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+        maven { url "http://jcenter.bintray.com" }
+    }
+}
