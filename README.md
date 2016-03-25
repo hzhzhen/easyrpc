@@ -77,3 +77,38 @@ client.send("how are you");
 ```java
 server.forEach(transport -> transport.send("hello everyone!"));
 ```
+
+### Stateful Transport
+
+> a transport means a socket channel connection. 
+
+Once client connect to a server, both client and server create their own transport to refer this connection.
+
+So you can easily regard it as a socket wrapper.
+
+Attach your data to make a transport stateful
+
+For example
+
+```java
+class Authorization {
+    public boolean isLogin = false;
+}
+```
+
+then you can attach it to your transport, and get it in message handler
+
+```java
+client.attach(new Authorization())
+    .onMessage((transport, message) -> {
+        Authorization auth = transport.attachmentAs(Authorization.class);
+        if (auth.isLogin)
+            ...
+        else if (...) //whatever, depends on your protocol
+            auth.isLogin = true
+        else
+            ...
+    })
+```
+
+just code it with your free wisdom!!

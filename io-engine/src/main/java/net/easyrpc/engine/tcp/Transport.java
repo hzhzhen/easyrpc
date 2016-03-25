@@ -36,8 +36,12 @@ public class Transport implements Closeable, Comparable<Transport> {
         return this;
     }
 
-    public Object attachment() {
+    public Object attachment(){
         return attachment;
+    }
+
+    public <T> T attachmentAs(Class<T> type) {
+        return (T) attachment;
     }
 
     @Override
