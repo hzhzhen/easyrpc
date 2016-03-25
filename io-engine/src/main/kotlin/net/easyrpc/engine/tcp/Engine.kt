@@ -5,9 +5,11 @@ import net.easyrpc.engine.tcp.handler.Handler
 import net.easyrpc.engine.tcp.handler.Listener
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.*
+import java.nio.channels.ReadableByteChannel
+import java.nio.channels.SelectionKey
+import java.nio.channels.Selector
+import java.nio.channels.ServerSocketChannel
 import java.util.*
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -189,32 +191,4 @@ internal fun readLine(channel: ReadableByteChannel): ByteArray? {
         var endLine = part.toList().contains('\n'.toByte())
     } while (!endLine)
     return entityParts.toByteArray()
-}
-
-open class Transport : Comparable<Transport>, AutoCloseable {
-
-    var channel: SocketChannel? = null
-    val sid = System.currentTimeMillis().toString()
-    val task = ConcurrentLinkedQueue<ByteArray>()
-
-    constructor(channel: SocketChannel) {
-        this.channel = channel
-    }
-
-    fun send(message: ByteArray) {
-        task.add(message)
-    }
-
-    fun send(message: String) {
-        task.add(message.toByteArray())
-    }
-
-    override fun close() {
-        channel?.close()
-    }
-
-    override fun compareTo(other: Transport): Int {
-        if (other.sid.equals(this.sid)) return 0
-        return if (other.sid.toLong() > this.sid.toLong()) -1 else 1
-    }
 }

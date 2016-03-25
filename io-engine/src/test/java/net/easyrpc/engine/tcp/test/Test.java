@@ -14,10 +14,10 @@ public class Test {
     public static void main(String... args) throws IOException {
         Server server = Engine.server()
                 .onConnect(transport ->
-                        System.out.printf("session:%s connect to server\n", transport.getSid())
+                        System.out.printf("session:%s connect to server\n", transport.SID)
                 )
                 .onDisconnect(transport ->
-                        System.out.printf("session:%s disconnect\n", transport.getSid())
+                        System.out.printf("session:%s disconnect\n", transport.SID)
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
@@ -37,10 +37,10 @@ public class Test {
 
         Client client = Engine.client()
                 .onConnect(transport -> //transport here always mean client `this`
-                        System.out.printf("client connect at session:%s\n", transport.getSid())
+                        System.out.printf("client connect at session:%s\n", transport.SID)
                 )
                 .onDisconnect(transport ->
-                        System.out.printf("client disconnect at session:%s\n", transport.getSid())
+                        System.out.printf("client disconnect at session:%s\n", transport.SID)
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
