@@ -1,4 +1,4 @@
-package net.easyrpc.engine.tcp;
+package net.easyrpc.io.engine;
 
 import org.jetbrains.annotations.NotNull;
 
@@ -8,7 +8,7 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * @author chpengzh
+ * A transport is a wrapper object of socket channel
  */
 public class Transport implements Closeable, Comparable<Transport> {
 

@@ -40,7 +40,7 @@ Engine.server()
 - [x] how to create a client
 
 ```java
-Client client = Engine.client()
+Engine.Client client = Engine.client()
         .onConnect(transport -> //transport here always mean client `this`
                 System.out.printf("client connect at session:%s\n", transport.getSid())
         )
@@ -69,7 +69,7 @@ client.connect("localhost", 8090);
 - [x] I wanna send a message to server
 
 ```java
-client.send("how are you");
+client.send("how are you\n");
 ```
 
 - [x] I wanna broadcast messages from server to client

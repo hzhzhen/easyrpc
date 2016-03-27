@@ -1,8 +1,8 @@
-package net.easyrpc.engine.tcp
+package net.easyrpc.io.engine
 
-import net.easyrpc.engine.tcp.handler.ErrorListener
-import net.easyrpc.engine.tcp.handler.Handler
-import net.easyrpc.engine.tcp.handler.Listener
+import net.easyrpc.io.engine.handler.ErrorListener
+import net.easyrpc.io.engine.handler.Handler
+import net.easyrpc.io.engine.handler.Listener
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.ReadableByteChannel
@@ -18,7 +18,7 @@ internal val POLL_PERIOD = 50L;
 /**
  * @author chpengzh
  */
-internal class ClientImpl : Client {
+internal class ClientImpl : Engine.Client {
 
     val executor = Executors.newSingleThreadScheduledExecutor()
     val selector: Selector
@@ -32,22 +32,22 @@ internal class ClientImpl : Client {
         selector = Selector.open()
     }
 
-    override fun onConnect(handler: Handler): Client {
+    override fun onConnect(handler: Handler): Engine.Client {
         this.mConnectHandler = handler
         return this
     }
 
-    override fun onDisconnect(handler: Handler): Client {
+    override fun onDisconnect(handler: Handler): Engine.Client {
         this.mDisconnectHandler = handler
         return this
     }
 
-    override fun onMessage(listener: Listener): Client {
+    override fun onMessage(listener: Listener): Engine.Client {
         this.mListener = listener
         return this
     }
 
-    override fun onError(listener: ErrorListener): Client? {
+    override fun onError(listener: ErrorListener): Engine.Client? {
         this.mErrorListener = listener
         return this
     }
@@ -82,7 +82,7 @@ internal class ClientImpl : Client {
     }
 }
 
-internal class ServerImpl : Server {
+internal class ServerImpl : Engine.Server {
 
     val executor = Executors.newScheduledThreadPool(2)
     var serverSocketChannel: ServerSocketChannel
@@ -98,22 +98,22 @@ internal class ServerImpl : Server {
         serverSocketChannel = ServerSocketChannel.open()
     }
 
-    override fun onConnect(handler: Handler): Server {
+    override fun onConnect(handler: Handler): Engine.Server {
         this.mConnectHandler = handler
         return this
     }
 
-    override fun onDisconnect(handler: Handler): Server {
+    override fun onDisconnect(handler: Handler): Engine.Server {
         this.mDisconnectHandler = handler
         return this
     }
 
-    override fun onMessage(listener: Listener): Server {
+    override fun onMessage(listener: Listener): Engine.Server {
         this.mListener = listener
         return this
     }
 
-    override fun onError(listener: ErrorListener): Server {
+    override fun onError(listener: ErrorListener): Engine.Server {
         this.mErrorListener = listener
         return this
     }

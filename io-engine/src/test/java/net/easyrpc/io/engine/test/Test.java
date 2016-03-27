@@ -1,8 +1,6 @@
-package net.easyrpc.engine.tcp.test;
+package net.easyrpc.io.engine.test;
 
-import net.easyrpc.engine.tcp.Client;
-import net.easyrpc.engine.tcp.Engine;
-import net.easyrpc.engine.tcp.Server;
+import net.easyrpc.io.engine.Engine;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -12,12 +10,12 @@ import java.io.UnsupportedEncodingException;
  */
 public class Test {
     public static void main(String... args) throws IOException, InterruptedException {
-        Server server = Engine.server()
+        Engine.Server server = Engine.server()
                 .onConnect(transport ->
-                        System.out.printf("session:%s connect to server\n", transport.SID)
+                        System.out.printf("session:%s@server connect to server\n", transport.SID)
                 )
                 .onDisconnect(transport ->
-                        System.out.printf("session:%s disconnect\n", transport.SID)
+                        System.out.printf("session:%s@server disconnect\n", transport.SID)
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
@@ -35,12 +33,12 @@ public class Test {
                 });
         server.listen(8090);
 
-        Client client = Engine.client()
+        Engine.Client client = Engine.client()
                 .onConnect(transport -> //transport here always mean client `this`
-                        System.out.printf("client connect at session:%s\n", transport.SID)
+                        System.out.printf("client connect at session:%s@client\n", transport.SID)
                 )
                 .onDisconnect(transport ->
-                        System.out.printf("client disconnect at session:%s\n", transport.SID)
+                        System.out.printf("client disconnect at session:%s@client\n", transport.SID)
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
@@ -54,7 +52,6 @@ public class Test {
                     }
                 });
         client.connect("localhost", 8090);
-        client.send("how are you?");
-        client.send("fine\n");
+        client.send("how are you? Fine.\n");
     }
 }
