@@ -11,7 +11,7 @@ import java.io.UnsupportedEncodingException;
  * @author chpengzh
  */
 public class Test {
-    public static void main(String... args) throws IOException {
+    public static void main(String... args) throws IOException, InterruptedException {
         Server server = Engine.server()
                 .onConnect(transport ->
                         System.out.printf("session:%s connect to server\n", transport.SID)
@@ -54,6 +54,7 @@ public class Test {
                     }
                 });
         client.connect("localhost", 8090);
-        client.send("how are you");
+        client.send("how are you?");
+        client.send("fine\n");
     }
 }

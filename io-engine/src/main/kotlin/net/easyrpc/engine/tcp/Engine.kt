@@ -13,6 +13,8 @@ import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+internal val POLL_PERIOD = 50L;
+
 /**
  * @author chpengzh
  */
@@ -59,21 +61,18 @@ internal class ClientImpl : Client {
             selector.selectedKeys().forEach {
                 try {
                     if (it.isReadable) {
-                        val entity = readLine(this.channel!!)
+                        val entity = readMessage(this.channel!!)
                         if (entity != null) mListener?.call(this@ClientImpl, entity)
                         else close()
                     } else if (it.isWritable) {
                         val next = this@ClientImpl.task.poll();
-                        if (next != null) {
-                            this@ClientImpl.channel?.write(ByteBuffer.wrap(next))
-                            this@ClientImpl.channel?.write(ByteBuffer.wrap("\n".toByteArray()))
-                        }
+                        if (next != null) this@ClientImpl.channel?.write(ByteBuffer.wrap(next))
                     }
                 } catch(e: Exception) {
                     mErrorListener?.call(this@ClientImpl, e)
                 }
             }
-        }, 0, 50, TimeUnit.MILLISECONDS)
+        }, 0, POLL_PERIOD, TimeUnit.MILLISECONDS)
     }
 
     override fun close() {
@@ -136,7 +135,7 @@ internal class ServerImpl : Server {
                 this@ServerImpl.add(transport)
                 mConnectHandler?.call(transport)
             }
-        }, 0, 50, TimeUnit.MILLISECONDS);
+        }, 0, POLL_PERIOD, TimeUnit.MILLISECONDS);
 
         //do read and write task for authorized socket channels
         executor.scheduleWithFixedDelay({
@@ -145,7 +144,7 @@ internal class ServerImpl : Server {
                 val transport = it.attachment() as Transport
                 try {
                     if (it.isReadable) {
-                        val entity = readLine(transport.channel!!);
+                        val entity = readMessage(transport.channel!!);
                         if (entity != null) {
                             mListener?.call(transport, entity)
                         } else {
@@ -156,16 +155,13 @@ internal class ServerImpl : Server {
                         }
                     } else if (it.isWritable) {
                         val next = transport.task.poll();
-                        if (next != null) {
-                            transport.channel?.write(ByteBuffer.wrap(next))
-                            transport.channel?.write(ByteBuffer.wrap("\n".toByteArray()))
-                        }
+                        if (next != null) transport.channel?.write(ByteBuffer.wrap(next))
                     }
                 } catch(e: Exception) {
                     mErrorListener?.call(transport, e)
                 }
             }
-        }, 0, 50, TimeUnit.MILLISECONDS);
+        }, 0, POLL_PERIOD, TimeUnit.MILLISECONDS);
     }
 
     override fun close() {
@@ -176,7 +172,7 @@ internal class ServerImpl : Server {
     }
 }
 
-internal fun readLine(channel: ReadableByteChannel): ByteArray? {
+internal fun readMessage(channel: ReadableByteChannel): ByteArray? {
     val entityParts = ArrayList<Byte>()
     var size = 0;
     val buf = ByteBuffer.allocate(2048);
@@ -187,8 +183,8 @@ internal fun readLine(channel: ReadableByteChannel): ByteArray? {
         val part = buf.array().filter { b -> b != '\u0000'.toByte() }.toByteArray()
         size += part.size
         entityParts.addAll(part.toList())
+        val messageEnd = buf.hasRemaining()
         buf.clear()
-        var endLine = part.toList().contains('\n'.toByte())
-    } while (!endLine)
+    } while (!messageEnd)
     return entityParts.toByteArray()
 }
