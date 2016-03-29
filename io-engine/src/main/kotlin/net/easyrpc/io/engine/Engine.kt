@@ -5,10 +5,7 @@ import net.easyrpc.io.engine.handler.Handler
 import net.easyrpc.io.engine.handler.MessageHandler
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.ReadableByteChannel
-import java.nio.channels.SelectionKey
-import java.nio.channels.Selector
-import java.nio.channels.ServerSocketChannel
+import java.nio.channels.*
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -19,14 +16,16 @@ internal class ClientImpl : Engine.Client<Transport> {
 
     val executor = Executors.newSingleThreadScheduledExecutor()
     val selector: Selector
+    val transport: Transport
 
     var mConnectHandler: Handler<Transport>? = null
     var mDisconnectHandler: Handler<Transport>? = null
     var mMessageHandler: MessageHandler<Transport>? = null
     var mErrorListener: ErrorListener<Transport>? = null
 
-    constructor() : super() {
+    constructor() {
         selector = Selector.open()
+        transport = Transport(SocketChannel.open())
     }
 
     override fun onConnect(handler: Handler<Transport>): Engine.Client<Transport> {
@@ -49,32 +48,36 @@ internal class ClientImpl : Engine.Client<Transport> {
         return this
     }
 
+    override fun send(task: Transport.MessageTask) {
+        this.transport.send(task)
+    }
+
     override fun connect(host: String, port: Int) {
-        this.channel?.connect(InetSocketAddress(host, port))
-        mConnectHandler?.call(this)
-        channel?.configureBlocking(false)?.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE)
+        transport.channel?.connect(InetSocketAddress(host, port))
+        mConnectHandler?.call(transport)
+        transport.channel?.configureBlocking(false)?.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE)
         executor.scheduleWithFixedDelay({
             selector.select(POLL_PERIOD)
             selector.selectedKeys().forEach {
                 try {
                     if (it.isReadable) {
-                        val entity = readMessage(this.channel!!)
-                        if (entity != null) mMessageHandler?.call(this@ClientImpl, entity)
+                        val entity = readMessage(transport.channel!!)
+                        if (entity != null) mMessageHandler?.call(transport, entity)
                         else close()
                     } else if (it.isWritable) {
-                        val next = this@ClientImpl.poll();
-                        if (next != null) this@ClientImpl.channel?.write(ByteBuffer.wrap(next.bytes))
+                        val next = transport.poll();
+                        if (next != null) transport.channel?.write(ByteBuffer.wrap(next.bytes))
                     }
                 } catch(e: Exception) {
-                    mErrorListener?.call(this@ClientImpl, e)
+                    mErrorListener?.call(transport, e)
                 }
             }
         }, 0, POLL_PERIOD, TimeUnit.MILLISECONDS)
     }
 
     override fun close() {
-        mConnectHandler?.call(this@ClientImpl)
-        super.close()
+        mConnectHandler?.call(transport)
+        transport.close()
         executor.shutdownNow()
     }
 }
