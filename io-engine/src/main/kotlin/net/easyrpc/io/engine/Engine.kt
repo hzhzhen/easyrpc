@@ -12,8 +12,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal val POLL_PERIOD = 100L;
-internal val POLL_UNIT = TimeUnit.MICROSECONDS;
+internal var POLL_PERIOD = 100L;
+internal var POLL_UNIT = TimeUnit.MICROSECONDS;
+
+internal var ACCEPT_PERIOD = 1L;
+internal var ACCEPT_UNIT = TimeUnit.MILLISECONDS;
 
 internal class ClientImpl : Engine.Client<Engine.Transport> {
 
@@ -138,7 +141,7 @@ internal class ServerImpl : Engine.Server<Engine.Transport> {
                 this@ServerImpl.add(transport)
                 mConnectHandler?.call(transport)
             }
-        }, 0, POLL_PERIOD, POLL_UNIT);
+        }, 0, ACCEPT_PERIOD, ACCEPT_UNIT);
 
         //do read and write task for authorized socket channels
         executor.scheduleWithFixedDelay({
