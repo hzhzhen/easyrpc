@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.channels.SocketChannel;
 import java.util.concurrent.ConcurrentSkipListSet;
 
 public interface Engine {
@@ -43,8 +44,20 @@ public interface Engine {
 
         public abstract Client<T> onError(@NotNull ErrorListener<T> listener);
 
-        public abstract void send(@NotNull Transport.MessageTask task);
+        public abstract void send(@NotNull MessageTask task);
 
         public abstract void connect(@NotNull String host, int port) throws IOException;
+    }
+
+    interface Transport extends Closeable, Comparable<Transport> {
+        void send(@NotNull Engine.MessageTask messageTask);
+
+        long getSID();
+
+        SocketChannel getChannel();
+    }
+
+    interface MessageTask {
+        byte[] getBytes();
     }
 }

@@ -1,7 +1,6 @@
 package net.easyrpc.io.engine.test;
 
 import net.easyrpc.io.engine.Engine;
-import net.easyrpc.io.engine.Transport;
 import org.quickapi.core.Logger;
 
 import java.io.IOException;
@@ -15,12 +14,12 @@ public class Test {
     static Logger log = Logger.defaultInstance();
 
     public static void main(String... args) throws IOException, InterruptedException {
-        Engine.Server<Transport> server = Engine.server()
+        Engine.Server<Engine.Transport> server = Engine.server()
                 .onConnect(transport ->
-                        log.i("session:%s@server connect to server\n", transport.SID)
+                        log.i("session:%s@server connect to server\n", transport.getSID())
                 )
                 .onDisconnect(transport ->
-                        log.i("session:%s@server disconnect\n", transport.SID)
+                        log.i("session:%s@server disconnect\n", transport.getSID())
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
@@ -40,10 +39,10 @@ public class Test {
 
         Engine.Client client = Engine.client()
                 .onConnect(transport -> //transport here always mean client `this`
-                        log.w("client connect at session:%s@client\n", transport.SID)
+                        log.w("client connect at session:%s@client\n", transport.getSID())
                 )
                 .onDisconnect(transport ->
-                        log.w("client disconnect at session:%s@client\n", transport.SID)
+                        log.w("client disconnect at session:%s@client\n", transport.getSID())
                 )
                 .onError((transport, error) ->
                         error.printStackTrace()
