@@ -9,7 +9,7 @@ import java.io.UnsupportedEncodingException;
 /**
  * @author chpengzh
  */
-public class Test {
+public class TestSample {
 
     static Logger log = Logger.defaultInstance();
 
@@ -58,7 +58,7 @@ public class Test {
         client.send("how are you?"::getBytes);
         client.send("Fine.\n"::getBytes);
 
-        Thread.sleep(1000);
+        Thread.sleep(10000);
         server.forEach(transport -> transport.send("broadcast"::getBytes));
     }
 }

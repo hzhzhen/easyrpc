@@ -1,3 +1,2 @@
 rootProject.name = 'easyrpc'
 include 'io-engine'
-include 'protocal-io'
