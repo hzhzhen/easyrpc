@@ -1,7 +1,6 @@
 group 'net.easyrpc'
 version project_version
 
-
 allprojects {
     repositories {
         mavenCentral()
