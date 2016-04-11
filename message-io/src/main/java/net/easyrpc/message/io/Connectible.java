@@ -17,7 +17,7 @@ public interface Connectible extends Closeable {
      * @param port remote host port
      * @return this instance
      */
-    Connectible connect(@NotNull String host, int port) throws IOException;
+    Transport connect(@NotNull String host, int port) throws IOException;
 
     /***
      * disconnect from another node if connected

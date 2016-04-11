@@ -84,7 +84,7 @@ internal class MessageNodeImpl : MessageNode {
     }
 
     @Throws(IOException::class)
-    override fun connect(host: String, port: Int): MessageNode {
+    override fun connect(host: String, port: Int): Transport {
         val channel = SocketChannel.open()
         channel.connect(InetSocketAddress(host, port))
         channel.configureBlocking(false)
@@ -92,7 +92,7 @@ internal class MessageNodeImpl : MessageNode {
         channel.register(selector,
                 SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
         transports.add(transport)
-        return this
+        return transport
     }
 
     override fun disconnect(transport: Transport) {

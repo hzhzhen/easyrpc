@@ -12,6 +12,7 @@ import java.util.*
 //use kotlin lib to simplify byte array to list convert
 //to handle message io protocol
 internal class IOProtocol(val channel: SocketChannel) {
+
     fun readMessage(): Event {
         val entityParts = ArrayList<Byte>()
         var size = 0;
@@ -33,5 +34,6 @@ internal class IOProtocol(val channel: SocketChannel) {
     fun sendMessage(event: Event) {
         channel.write(ByteBuffer.wrap(JSON.toJSONBytes(event)))
     }
+
 }
 
