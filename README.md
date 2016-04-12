@@ -39,3 +39,15 @@ transport.send("handler", new Status(){
 ```
 
 message should be json serializable!
+
+# Speed test
+
+speed test using a simple json message 
+
+```json
+{"count":1,"message":"message content"}
+```
+
+once server node or client node received message, `count++`
+
+the speed result of test sample is about 3000 message item per second!
