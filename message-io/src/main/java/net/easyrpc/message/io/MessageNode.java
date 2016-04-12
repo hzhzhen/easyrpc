@@ -1,7 +1,5 @@
 package net.easyrpc.message.io;
 
-import org.jetbrains.annotations.NotNull;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -20,8 +18,8 @@ public interface MessageNode extends Connectible, Closeable {
     long ACCEPT_POLLING = 10;
     TimeUnit ACCEPT_POLLING_UNIT = TimeUnit.MILLISECONDS;
 
-    long MESSAGE_POLLING = 1;
-    TimeUnit MESSAGE_POLLING_UNIT = TimeUnit.MILLISECONDS;
+    long MESSAGE_POLLING = 100;
+    TimeUnit MESSAGE_POLLING_UNIT = TimeUnit.MICROSECONDS;
 
     /***
      * get all transports
@@ -54,15 +52,6 @@ public interface MessageNode extends Connectible, Closeable {
      * @return this instance
      */
     MessageNode setDisconnectHandler(TransportHandler handler);
-
-    /***
-     * connect to another node by socket channel
-     *
-     * @param host remote host name
-     * @param port remote host port
-     * @return this instance
-     */
-    Transport connect(@NotNull String host, int port) throws IOException;
 
     /***
      * open a listen port at localhost

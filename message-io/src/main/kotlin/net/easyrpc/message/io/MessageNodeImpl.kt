@@ -65,7 +65,6 @@ internal class MessageNodeImpl : MessageNode {
                         }
                     } catch (e: Exception) {
                         //handle exception if disconnected
-                        e.printStackTrace(System.out)
                         mDisconnectHandler?.handle(transport)
                         disconnect(transport)
                     }
