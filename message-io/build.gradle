@@ -15,3 +15,52 @@ dependencies {
 
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }
+
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.6'
+    }
+}
+apply plugin: 'com.jfrog.bintray'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+
+publishing {
+    publications {
+        MyPublication(MavenPublication) {
+            from components.java
+            groupId 'net.easyrpc'
+            artifactId 'message-io'
+            version project_version
+        }
+    }
+}
+
+bintray {
+    user = 'chpengzh'
+    key = 'a0d0c25f443577b557c88113bf5d4d32b3c71a47'
+    publications = ['MyPublication']
+    pkg {
+        repo = 'maven'
+        name = 'easyrpc'
+        desc = 'what a fantastic package indeed!'
+        websiteUrl = 'https://github.com/chpengzh/easyrpc.message-io'
+        issueTrackerUrl = 'https://github.com/chpengzh/easyrpc.message-io/issues'
+        vcsUrl = 'https://github.com/chpengzh/easyrpc.message-io.git'
+        licenses = ['Apache-2.0']
+        labels = ['rpc', 'message system', 'akka']
+        publicDownloadNumbers = true
+
+        githubRepo = 'chpengzh/easyrpc.message-io' //Optional Github repository
+        githubReleaseNotesFile = 'README.md' //Optional Github readme file
+
+        //Optional version descriptor
+        version {
+            name = project_version
+            vcsTag = project_version
+        }
+    }
+}

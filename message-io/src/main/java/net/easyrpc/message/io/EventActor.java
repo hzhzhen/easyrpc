@@ -17,8 +17,7 @@ public class EventActor<T> extends AbstractActor {
     EventActor(Class<T> type, MessageHandler<T> handler) {
         receive(ReceiveBuilder
                 .match(TransportEvent.class, event ->
-                        handler.handle(event.transport,
-                                JSON.parseObject(JSON.toJSONBytes(event.object), type)))
+                        handler.handle(event.transport, JSON.parseObject(event.json, type)))
                 .build());
     }
 
@@ -26,12 +25,12 @@ public class EventActor<T> extends AbstractActor {
 
         public String tag;
         public Transport transport;
-        public Object object;
+        public String json;
 
-        public TransportEvent(String tag, Transport transport, Object object) {
+        public TransportEvent(String tag, Transport transport, String json) {
             this.tag = tag;
             this.transport = transport;
-            this.object = object;
+            this.json = json;
         }
 
     }

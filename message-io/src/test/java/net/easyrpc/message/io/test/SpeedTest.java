@@ -10,7 +10,7 @@ import java.io.IOException;
  */
 public class SpeedTest {
     volatile static int c = 1;
-    static final int TIME = 20;
+    static final int TIME = 10;
 
     public static void main(String... args) throws IOException, InterruptedException {
         try (
@@ -33,7 +33,7 @@ public class SpeedTest {
                         })
 
         ) {
-            Transport tcp = node2.connect("localhost", 8090);
+            Transport tcp = node2.connect("192.168.12.115", 8090);
             tcp.send("handler1", new Status() {
                 public int count = c;
                 public String message = "start flag";

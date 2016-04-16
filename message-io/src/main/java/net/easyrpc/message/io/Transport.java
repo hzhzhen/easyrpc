@@ -1,5 +1,6 @@
 package net.easyrpc.message.io;
 
+import com.alibaba.fastjson.JSON;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.channels.SocketChannel;
@@ -16,7 +17,7 @@ public class Transport implements Comparable<Transport> {
     }
 
     public void send(String tag, Object object) {
-        taskQueue.add(new Event(tag, object));
+        taskQueue.add(new Event(tag, JSON.toJSONString(object)));
     }
 
     Transport attach(Object attachment) {

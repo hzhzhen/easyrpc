@@ -2,8 +2,9 @@ package net.easyrpc.message.io
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import java.io.IOException
+import java.io.*
 import java.net.InetSocketAddress
+import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
@@ -22,6 +23,7 @@ internal class MessageNodeImpl : MessageNode {
     private val system = ActorSystem.create()
     private val actors = ConcurrentHashMap<String, ActorRef>()
     private val mainService = Executors.newScheduledThreadPool(2)
+    private val ioService = Executors.newSingleThreadExecutor()
     private var mConnectHandler: TransportHandler? = null
     private var mDisconnectHandler: TransportHandler? = null
     private val selector = Selector.open()
@@ -53,18 +55,15 @@ internal class MessageNodeImpl : MessageNode {
                 selector.selectedKeys().forEach {
                     val transport = it.attachment() as Transport
                     try {
-                        val polling = IOProtocol(transport.channel)
                         if (it.isReadable) {
-                            val event = polling.readMessage() //throw runtime exception if disconnected
-                            actors[event.tag]?.tell(event.bind(transport), ActorRef.noSender())
+                            readMessage(transport)
                         } else if (it.isWritable) {
                             val event = transport.taskQueue.poll()
-                            if (event != null) {
-                                polling.sendMessage(event)
-                            }
+                            if (event != null) sendMessage(transport, event)
                         }
                     } catch (e: Exception) {
                         //handle exception if disconnected
+                        e.printStackTrace()
                         mDisconnectHandler?.handle(transport)
                         disconnect(transport)
                     }
@@ -110,7 +109,7 @@ internal class MessageNodeImpl : MessageNode {
     override fun listen(port: Int): MessageNode {
         if (servers[port] != null) return this
         val ssc = ServerSocketChannel.open()
-                .bind(InetSocketAddress("localhost", port))
+                .bind(InetSocketAddress(port))
                 .configureBlocking(false) as ServerSocketChannel
         servers.put(port, ssc)
         return this
@@ -138,6 +137,7 @@ internal class MessageNodeImpl : MessageNode {
     @Throws(IOException::class)
     override fun close() {
         mainService.shutdownNow()
+        ioService.shutdownNow()
         transports.forEach({ this.disconnect(it) })
         servers.forEach({ port, ssc ->
             try {
@@ -147,5 +147,31 @@ internal class MessageNodeImpl : MessageNode {
             }
         })
         system.terminate()
+    }
+
+    //handle object serialization
+    fun readMessage(transport: Transport) {
+        val buffer = ByteBuffer.allocate(32 * 1024)
+        val flag = transport.channel.read(buffer);
+        if (flag == -1) throw IOException("session disconnected")
+        val bytes = buffer.array().copyOf(buffer.position())
+        ioService.submit {
+            ObjectInputStream(ByteArrayInputStream(bytes)).use {
+                while (true) {
+                    val event = it.readObject() ?: break
+                    if (event !is Event) continue
+                    actors[event.tag]?.tell(event.bind(transport), ActorRef.noSender())
+                }
+            }
+        }
+    }
+
+    fun sendMessage(transport: Transport, event: Event) {
+        ioService.submit {
+            ByteArrayOutputStream().use {
+                ObjectOutputStream(it).writeObject(event)
+                transport.channel.write(ByteBuffer.wrap(it.toByteArray()))
+            }
+        }
     }
 }
