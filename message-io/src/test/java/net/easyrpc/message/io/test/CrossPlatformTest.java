@@ -1,6 +1,7 @@
 package net.easyrpc.message.io.test;
 
-import net.easyrpc.message.io.MessageNode;
+import net.easyrpc.message.io.api.IO;
+import net.easyrpc.message.io.api.MessageNode;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -12,11 +13,11 @@ import java.util.concurrent.Executors;
  */
 public class CrossPlatformTest {
     public static void main(String... args) throws IOException {
-        MessageNode node1 = MessageNode.create()
+        MessageNode node1 = IO.node()
                 .register("message_receive", Message.class, (tsp, object) ->
                         System.out.println(object.message)
                 )
-                .listen(8090);
+                .listen(8090, transport -> null, error -> null);
         BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
         Executors.newSingleThreadExecutor().submit(() -> {
             while (true) {

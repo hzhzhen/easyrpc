@@ -1,8 +1,12 @@
-package net.easyrpc.message.io
+package net.easyrpc.message.io.core
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import com.alibaba.fastjson.JSON
+import net.easyrpc.message.io.api.MessageNode
+import net.easyrpc.message.io.api.TypedMessageHandler
+import net.easyrpc.message.io.model.Event
+import net.easyrpc.message.io.model.EventActor
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.IOException
@@ -13,44 +17,52 @@ import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentSkipListSet
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * @author chpengzh
  */
 internal class MessageNodeImpl : MessageNode {
 
+    private val ACCEPT_POLLING: Long = 10
+    private val ACCEPT_POLLING_UNIT = TimeUnit.MILLISECONDS
+    private val MESSAGE_POLLING: Long = 1000
+    private val MESSAGE_POLLING_UNIT = TimeUnit.MICROSECONDS
+
     private val transports = ConcurrentSkipListSet<Transport>()
-    private val servers = ConcurrentHashMap<Int, ServerSocketChannel>()
+    private val servers = ConcurrentHashMap<Int, Acceptor>()
+
     private val system = ActorSystem.create()
     private val actors = ConcurrentHashMap<String, ActorRef>()
+
     private val mainService = Executors.newScheduledThreadPool(2)
     private val ioService = Executors.newSingleThreadExecutor()
-    private var mConnectHandler: TransportHandler? = null
-    private var mDisconnectHandler: TransportHandler? = null
+    private val connService = Executors.newSingleThreadExecutor()
+
     private val selector = Selector.open()
 
     constructor() {
         //Accept polling bus
         mainService.scheduleWithFixedDelay({
-            servers.forEach({ port, ssc ->
+            servers.forEach({ port, acceptor ->
                 try {
-                    val channel = ssc.accept()
+                    val channel = acceptor.ssc.accept()
                     if (channel != null) {
                         channel.configureBlocking(false)
-                        val transport = Transport(channel)
-                        channel.register(selector,
-                                SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
+                        val transport = Transport(channel = channel, error = acceptor.error)
+                        channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
                         transports.add(transport)
-                        mConnectHandler?.handle(transport)
+                        acceptor.accept(transport)
                     }
                 } catch (e: IOException) {
                     e.printStackTrace(System.out)
                 }
             })
-        }, 0, MessageNode.ACCEPT_POLLING, MessageNode.ACCEPT_POLLING_UNIT)
+        }, 0, ACCEPT_POLLING, ACCEPT_POLLING_UNIT)
 
         //Message polling bus
         mainService.scheduleWithFixedDelay({
@@ -65,91 +77,72 @@ internal class MessageNodeImpl : MessageNode {
                             val event = transport.taskQueue.poll()
                             if (event != null) sendMessage(transport, event)
                         }
-                    } catch (e: Exception) {
-                        //handle exception if disconnected
-                        e.printStackTrace()
-                        mDisconnectHandler?.handle(transport)
-                        disconnect(transport)
+                    } catch (e: IOException) {
+                        transport.error(e)
+                        disconnect(transport)//handle exception if disconnected
                     }
                 }
             } catch (e: IOException) {
                 e.printStackTrace(System.out)
             }
-        }, 0, MessageNode.MESSAGE_POLLING, MessageNode.MESSAGE_POLLING_UNIT)
+        }, 0, MESSAGE_POLLING, MESSAGE_POLLING_UNIT)
     }
 
-    override fun transports(): ConcurrentSkipListSet<Transport> = transports.clone()
+    override fun transports(): ConcurrentSkipListSet<Transport> = transports
 
-    override fun <T> register(tag: String, type: Class<T>, handler: MessageHandler<T>): MessageNode {
+    override fun <T> register(tag: String, type: Class<T>, handler: TypedMessageHandler<T>): MessageNode {
         actors.put(tag, system.actorOf(EventActor.props(type, handler), tag))
         return this
     }
 
-    @Throws(IOException::class)
-    override fun connect(host: String, port: Int): Transport {
-        val channel = SocketChannel.open()
-        channel.connect(InetSocketAddress(host, port))
-        channel.configureBlocking(false)
-        val transport = Transport(channel)
-        channel.register(selector,
-                SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
-        transports.add(transport)
-        return transport
+    override fun connect(host: String, port: Int, success: (Transport) -> Unit,
+                         fail: (IOException) -> Unit): MessageNode {
+        connService.submit {
+            try {
+                val channel = SocketChannel.open()
+                channel.connect(InetSocketAddress(host, port))
+                channel.configureBlocking(false)
+                val transport = Transport(channel = channel, error = fail)
+                channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
+                transports.add(transport)
+                success(transport)
+            } catch(error: IOException) {
+                fail(error)
+            }
+        }
+        return this
     }
 
     override fun disconnect(transport: Transport) {
         if (transports.contains(transport)) {
             transports.remove(transport)
-            try {
-                transport.channel.close()
-            } catch (e: IOException) {
-                e.printStackTrace(System.out)
-            }
-
+            transport.taskQueue.clear()
+            transport.channel.close()
         }
     }
 
-    @Throws(IOException::class)
-    override fun listen(port: Int): MessageNode {
+    override fun listen(port: Int, accept: (Transport) -> Unit, fail: (IOException) -> Unit): MessageNode {
         if (servers[port] != null) return this
-        val ssc = ServerSocketChannel.open()
-                .bind(InetSocketAddress(port))
+        val ssc = ServerSocketChannel.open().bind(InetSocketAddress(port))
                 .configureBlocking(false) as ServerSocketChannel
-        servers.put(port, ssc)
+        servers.put(port, Acceptor(port = port, ssc = ssc, accept = accept, error = fail))
         return this
     }
 
-    @Throws(IOException::class)
-    override fun close(port: Int) {
-        val ssc = servers[port]
-        if (ssc != null) {
-            ssc.close()
+    override fun shutdown(port: Int) {
+        val acceptor = servers[port]
+        if (acceptor != null) {
+            acceptor.ssc.close()
             servers.remove(port)
         }
     }
 
-    override fun setConnectHandler(handler: TransportHandler): MessageNode {
-        mConnectHandler = handler
-        return this
-    }
-
-    override fun setDisconnectHandler(handler: TransportHandler): MessageNode {
-        this.mDisconnectHandler = handler
-        return this
-    }
-
-    @Throws(IOException::class)
     override fun close() {
         mainService.shutdownNow()
         ioService.shutdownNow()
+        connService.shutdownNow()
         transports.forEach({ this.disconnect(it) })
-        servers.forEach({ port, ssc ->
-            try {
-                ssc.close()
-            } catch (e: IOException) {
-                e.printStackTrace(System.out)
-            }
-        })
+        servers.forEach({ port, acceptor -> shutdown(port) })
         system.terminate()
     }
 
@@ -176,7 +169,6 @@ internal class MessageNodeImpl : MessageNode {
     }
 
     fun sendMessage(transport: Transport, event: Event) {
-        val line = JSON.toJSONString(event) + "\n";
-        transport.channel.write(ByteBuffer.wrap(line.toByteArray()))
+        transport.channel.write(ByteBuffer.wrap((JSON.toJSONString(event) + "\n").toByteArray()))
     }
 }
