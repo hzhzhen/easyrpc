@@ -16,7 +16,7 @@ public class SpeedTest {
         try (
                 MessageNode node1 = MessageNode.create()
                         .register("handler1", Status.class, (transport, object) -> {
-                            c++;
+                            c = object.count;
                             transport.send("handler2", new Object() {
                                 public int count = object.count + 1;
                                 public String message = "message from node1";
@@ -25,7 +25,7 @@ public class SpeedTest {
 
                 MessageNode node2 = MessageNode.create()
                         .register("handler2", Status.class, (transport, object) -> {
-                            c++;
+                            c = object.count;
                             transport.send("handler1", new Status() {
                                 public int count = object.count + 1;
                                 public String message = "message from node2";
@@ -33,7 +33,7 @@ public class SpeedTest {
                         })
 
         ) {
-            Transport tcp = node2.connect("192.168.12.115", 8090);
+            Transport tcp = node2.connect("localhost", 8090);
             tcp.send("handler1", new Status() {
                 public int count = c;
                 public String message = "start flag";

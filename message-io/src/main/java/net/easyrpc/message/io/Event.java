@@ -8,9 +8,16 @@ import java.io.Serializable;
 public class Event implements Serializable {
 
     public String tag;
-    public String json;
+    public Object obj;
+    public Long requireId;
 
     public Event() {
+    }
+
+    public Event(String tag, Object obj, Long requireId) {
+        this.tag = tag;
+        this.obj = obj;
+        this.requireId = requireId;
     }
 
     public String getTag() {
@@ -21,20 +28,23 @@ public class Event implements Serializable {
         this.tag = tag;
     }
 
-    public Object getJson() {
-        return json;
+    public Object getObj() {
+        return obj;
     }
 
-    public void setJson(String json) {
-        this.json = json;
+    public void setObj(Object obj) {
+        this.obj = obj;
     }
 
-    public Event(String tag, String json) {
-        this.tag = tag;
-        this.json = json;
+    public Long getRequireId() {
+        return requireId;
+    }
+
+    public void setRequireId(Long requireId) {
+        this.requireId = requireId;
     }
 
     public EventActor.TransportEvent bind(Transport transport) {
-        return new EventActor.TransportEvent(tag, transport, json);
+        return new EventActor.TransportEvent(tag, transport, obj);
     }
 }

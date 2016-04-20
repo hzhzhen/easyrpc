@@ -18,7 +18,7 @@ public interface MessageNode extends Connectible, Closeable {
     long ACCEPT_POLLING = 10;
     TimeUnit ACCEPT_POLLING_UNIT = TimeUnit.MILLISECONDS;
 
-    long MESSAGE_POLLING = 100;
+    long MESSAGE_POLLING = 1000;
     TimeUnit MESSAGE_POLLING_UNIT = TimeUnit.MICROSECONDS;
 
     /***

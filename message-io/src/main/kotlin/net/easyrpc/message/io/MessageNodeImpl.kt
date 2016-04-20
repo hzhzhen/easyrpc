@@ -2,7 +2,11 @@ package net.easyrpc.message.io
 
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import java.io.*
+import com.alibaba.fastjson.JSON
+import java.io.BufferedReader
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
@@ -154,24 +158,25 @@ internal class MessageNodeImpl : MessageNode {
         val buffer = ByteBuffer.allocate(32 * 1024)
         val flag = transport.channel.read(buffer);
         if (flag == -1) throw IOException("session disconnected")
+        if (buffer.position() == 0) return
         val bytes = buffer.array().copyOf(buffer.position())
         ioService.submit {
-            ObjectInputStream(ByteArrayInputStream(bytes)).use {
+            BufferedReader(InputStreamReader(ByteArrayInputStream(bytes))).use {
                 while (true) {
-                    val event = it.readObject() ?: break
-                    if (event !is Event) continue
-                    actors[event.tag]?.tell(event.bind(transport), ActorRef.noSender())
+                    val line = it.readLine() ?: break
+                    try {
+                        val event = JSON.parseObject(line, Event::class.java)
+                        actors[event.tag]?.tell(event.bind(transport), ActorRef.noSender())
+                    } catch(ignore: Exception) {
+
+                    }
                 }
             }
         }
     }
 
     fun sendMessage(transport: Transport, event: Event) {
-        ioService.submit {
-            ByteArrayOutputStream().use {
-                ObjectOutputStream(it).writeObject(event)
-                transport.channel.write(ByteBuffer.wrap(it.toByteArray()))
-            }
-        }
+        val line = JSON.toJSONString(event) + "\n";
+        transport.channel.write(ByteBuffer.wrap(line.toByteArray()))
     }
 }

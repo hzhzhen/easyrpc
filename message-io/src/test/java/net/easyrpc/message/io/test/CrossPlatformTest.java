@@ -12,20 +12,28 @@ import java.util.concurrent.Executors;
  */
 public class CrossPlatformTest {
     public static void main(String... args) throws IOException {
-        MessageNode node1 = MessageNode.create().listen(8090);
+        MessageNode node1 = MessageNode.create()
+                .register("message_receive", Message.class, (tsp, object) ->
+                        System.out.println(object.message)
+                )
+                .listen(8090);
         BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
         Executors.newSingleThreadExecutor().submit(() -> {
             while (true) {
                 try {
                     String line = br.readLine();
                     node1.transports().forEach(transport ->
-                            transport.send("broadcast", new Object() {
+                            transport.send("message", new Object() {
                                 public String message = line;
                             }));
-                }catch (Exception e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
         });
+    }
+
+    public static class Message {
+        public String message;
     }
 }
