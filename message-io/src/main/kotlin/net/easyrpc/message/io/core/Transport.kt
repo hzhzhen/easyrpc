@@ -8,9 +8,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
 /**
  * @author chpengzh
  */
-class Transport(var channel: SocketChannel, var attachment: Any? = null,
+class Transport(var channel: SocketChannel,
+                var attachment: Any? = null,
                 val error: (IOException) -> Unit,
                 val taskQueue: ConcurrentLinkedQueue<Event> = ConcurrentLinkedQueue()) : Comparable<Transport> {
+
     override fun compareTo(other: Transport): Int = when {
         other.hashCode() == hashCode() -> 0
         other.hashCode() < hashCode() -> -1

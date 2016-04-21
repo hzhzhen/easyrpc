@@ -10,7 +10,7 @@ import java.io.IOException;
  */
 public class SpeedTest {
     volatile static long c = 1;
-    static final int TIME = 10;
+    static final int TIME = 100;
     static long start;
 
     public static void main(String... args) throws IOException, InterruptedException {

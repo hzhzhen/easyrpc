@@ -23,10 +23,9 @@ public class CrossPlatformTest {
             while (true) {
                 try {
                     String line = br.readLine();
-                    node1.transports().forEach(transport ->
-                            transport.send("message", new Object() {
-                                public String message = line;
-                            }));
+                    node1.transports().forEach(transport -> transport.send("message", new Object() {
+                        public String message = line;
+                    }));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

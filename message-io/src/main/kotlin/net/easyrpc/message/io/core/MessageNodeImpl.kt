@@ -30,7 +30,7 @@ internal class MessageNodeImpl : MessageNode {
 
     private val ACCEPT_POLLING: Long = 10
     private val ACCEPT_POLLING_UNIT = TimeUnit.MILLISECONDS
-    private val MESSAGE_POLLING: Long = 1000
+    private val MESSAGE_POLLING: Long = 100
     private val MESSAGE_POLLING_UNIT = TimeUnit.MICROSECONDS
 
     private val transports = ConcurrentSkipListSet<Transport>()
