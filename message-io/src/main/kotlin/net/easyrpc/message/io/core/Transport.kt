@@ -1,7 +1,7 @@
 package net.easyrpc.message.io.core
 
+import net.easyrpc.message.io.api.ErrorHandler
 import net.easyrpc.message.io.model.Event
-import java.io.IOException
 import java.nio.channels.SocketChannel
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -9,9 +9,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * @author chpengzh
  */
 class Transport(var channel: SocketChannel,
-                var attachment: Any? = null,
-                val error: (IOException) -> Unit,
-                val taskQueue: ConcurrentLinkedQueue<Event> = ConcurrentLinkedQueue()) : Comparable<Transport> {
+                private var attachment: Any? = null,
+                val error: ErrorHandler,
+                val taskQueue: ConcurrentLinkedQueue<Event> = ConcurrentLinkedQueue()) :
+        Comparable<Transport> {
 
     override fun compareTo(other: Transport): Int = when {
         other.hashCode() == hashCode() -> 0
@@ -27,4 +28,9 @@ class Transport(var channel: SocketChannel,
         this.attachment = attachment
         return this
     }
+
+    fun attachment(): Any? {
+        return attachment
+    }
+
 }

@@ -3,24 +3,22 @@ package net.easyrpc.message.io.model;
 import akka.actor.AbstractActor;
 import akka.actor.Props;
 import akka.japi.pf.ReceiveBuilder;
-import com.alibaba.fastjson.JSON;
-import net.easyrpc.message.io.api.TypedMessageHandler;
+import net.easyrpc.message.io.api.UnTypedMessageHandler;
 import net.easyrpc.message.io.core.Transport;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author chpengzh
  */
-public class EventActor<T> extends AbstractActor {
+public class EventActor extends AbstractActor {
 
-    public static <T> Props props(Class<T> type, TypedMessageHandler<T> handler) {
-        return Props.create(EventActor.class, () -> new EventActor<>(type, handler));
+    public static Props props(@NotNull Class<?> type, @NotNull UnTypedMessageHandler handler) {
+        return Props.create(EventActor.class, () -> new EventActor(type, handler));
     }
 
-    EventActor(Class<T> type, TypedMessageHandler<T> handler) {
-        receive(ReceiveBuilder
-                .match(TransportEvent.class, event ->
-                        handler.handle(event.transport, JSON.parseObject(JSON.toJSONBytes(event.obj), type)))
-                .build());
+    EventActor(Class<?> type, UnTypedMessageHandler handler) {
+        receive(ReceiveBuilder.match(TransportEvent.class, event ->
+                handler.handle(event.transport, event.obj)).build());
     }
 
     public static class TransportEvent {
