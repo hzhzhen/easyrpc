@@ -11,11 +11,13 @@ Message IO 是一个基于socket长连接的消息通信库, 它具有如下特�
 ### 使用:
 
 > 创建一个消息节点 (MessageNode) 
+
 ```java
 MessageNode node = MessageNode.create();
 ```
 
 > 消息节点监听 (listen) 本地端口
+
 ```java
 node.listen(8090, transport -> {}, error -> {});//需提供处理当"接收到一个连接"和"检查到连接断开"的方法
 ```
