@@ -56,7 +56,71 @@ transport.send("handler", new Object(){
 Set<Transport> transports = node.transports();
 ```
 
-# 效率测试
+### spring-context 下的使用与配置
+
+> 定义一个连接与连接行为
+
+```java
+@Listen(8090)
+@Connect("localhost:8090")
+public class ConnectController implements BaseConnector {
+
+    @Override
+    public void onConnect(Transport transport) {
+
+    }
+
+    @Override
+    public void onError(IOException error) {
+
+    }
+
+}
+```
+
+> 定义事件处理
+
+```java
+public class EventController {
+
+    @OnEvent("message")
+    public void print(String message) {
+        System.out.println(message);
+    }
+
+    @OnEvent(value = "content", type = Test.class)
+    public void test(Test test) {
+        System.out.println(test.content);
+    }
+
+    public static class Test {
+        public String content;
+    }
+       
+}
+```
+
+> spring-context 中的配置
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean class="net.easyrpc.message.io.core.MessageNode">
+        <property name="eventHandler" value="net.easyrpc.message.io.test"/>
+        <property name="connector" value="net.easyrpc.message.io.test"/>
+    </bean>
+
+</beans>
+```
+
+其中eventHandler对应事件处理方法所在的package, 参数可以为一个array
+而connector对应连接类(BaseConnector)所在的的package, 参数可以为一个array
+
+### 效率测试
 
 在明白了以上方法之后, 我们不妨来设计一个效率测试, 同时作为demo
 
@@ -98,7 +162,7 @@ public class SpeedTest {
 }
 ```
 
-抱着不严谨的态度我这里只能提供在我自己电脑上的运行结果, 结果自测,对,大约每秒5500条
+抱着超级不严谨的态度我这里只能提供在我自己电脑上的运行结果, 结果自测,对,大约每秒5500条
 
 ```shell
 Speed content: 5494 message per secon

@@ -17,4 +17,5 @@ public class EventController {
     public static class Test {
         public String content;
     }
+
 }

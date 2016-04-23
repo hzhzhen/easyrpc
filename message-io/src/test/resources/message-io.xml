@@ -5,11 +5,7 @@
     http://www.springframework.org/schema/beans/spring-beans.xsd">
 
     <bean class="net.easyrpc.message.io.core.MessageNode">
-        <property name="eventHandler">
-            <array>
-                <value>net.easyrpc.message.io.test</value>
-            </array>
-        </property>
+        <property name="eventHandler" value="net.easyrpc.message.io.test"/>
         <property name="connector" value="net.easyrpc.message.io.test"/>
     </bean>
 
