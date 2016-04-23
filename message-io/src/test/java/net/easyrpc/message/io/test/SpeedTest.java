@@ -33,7 +33,7 @@ public class SpeedTest {
 
         Thread.sleep(TIME * 1000);
         long time = System.currentTimeMillis() - start;
-        System.out.printf("Speed test: %d message per second%n", c * 1000 / time);
+        System.out.printf("Speed content: %d message per second%n", c * 1000 / time);
 
         node1.terminate();
         node2.terminate();

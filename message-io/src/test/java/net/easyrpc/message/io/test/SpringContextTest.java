@@ -1,16 +1,14 @@
 package net.easyrpc.message.io.test;
 
 import net.easyrpc.message.io.core.MessageNode;
-import org.junit.runner.RunWith;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.support.FileSystemXmlApplicationContext;
 
-@RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration(locations = {"classpath:message-io.xml"})
 public class SpringContextTest {
 
-    @Autowired
-    MessageNode node;
+    public static void main(String... args) {
+        ApplicationContext context = new FileSystemXmlApplicationContext("classpath:message-io.xml");
+        MessageNode node = context.getBean(MessageNode.class);
+    }
 
 }
