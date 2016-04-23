@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
 open class MessageNode {
 
     private val acceptPolling: Long = 10   //time unit: ms
-    private val messagePolling: Long = 50 //time unit: μs
+    private val messagePolling: Long = 100 //time unit: μs
     private val acceptPollingUnit = TimeUnit.MILLISECONDS
     private val messagePollingUnit = TimeUnit.MICROSECONDS
 

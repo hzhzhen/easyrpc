@@ -1,4 +1,3 @@
 rootProject.name = 'easyrpc'
-include 'io-engine'
 include 'message-io'
 
