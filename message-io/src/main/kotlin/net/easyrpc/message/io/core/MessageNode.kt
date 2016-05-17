@@ -4,20 +4,14 @@ import com.alibaba.fastjson.JSON
 import net.easyrpc.message.io.annotation.Connect
 import net.easyrpc.message.io.annotation.Listen
 import net.easyrpc.message.io.annotation.OnEvent
-import net.easyrpc.message.io.api.BaseConnector
-import net.easyrpc.message.io.api.ConnectHandler
-import net.easyrpc.message.io.api.ErrorHandler
-import net.easyrpc.message.io.api.TypedMessageHandler
+import net.easyrpc.message.io.api.*
 import net.easyrpc.message.io.error.IllegalTagException
 import net.easyrpc.message.io.model.Event
 import org.reflections.Reflections
 import org.reflections.scanners.MethodAnnotationsScanner
 import org.reflections.util.ClasspathHelper
 import org.reflections.util.ConfigurationBuilder
-import java.io.BufferedReader
-import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
@@ -35,44 +29,26 @@ import java.util.concurrent.TimeUnit
  */
 open class MessageNode {
 
-    private val acceptPolling: Long = 10   //time unit: ms
-    private val messagePolling: Long = 50 //time unit: μs
-    private val acceptPollingUnit = TimeUnit.MILLISECONDS
-    private val messagePollingUnit = TimeUnit.MICROSECONDS
-
+    //当前所有连接
     private val transports = ConcurrentSkipListSet<Transport>()
+    //编码协议,默认为Json编码
+    private var protocol: Protocol = JsonProtocol()
     private val servers = ConcurrentHashMap<Int, Acceptor>()
+    //IO事件处理Selector
+    private val selector = Selector.open()
+    //事件轮询线程
+    private val service = Executors.newSingleThreadScheduledExecutor()
+    private val connector = Executors.newSingleThreadExecutor();
+    private val eventService = Executors.newFixedThreadPool(4);
+    //事件轮询周期
+    private val POLLING: Long = 50 //time unit: μs
+    private val POLLING_UNIT = TimeUnit.MICROSECONDS
+    //反射调用构造实例
+    private val invokers = HashMap<Class<*>, Any>()
     private val handlers = ConcurrentHashMap<String, (Transport, Any) -> Unit>()
 
-    private val mainService = Executors.newScheduledThreadPool(2)
-    private val ioService = Executors.newSingleThreadExecutor()
-    private val connService = Executors.newSingleThreadExecutor()
-    private val eventService = Executors.newFixedThreadPool(4)
-    private val instanceMap = HashMap<Class<*>, Any>()
-
-    private val selector = Selector.open()
-
-    init {
-        //Accept polling bus
-        mainService.scheduleWithFixedDelay({
-            servers.forEach({ port, acceptor ->
-                try {
-                    val channel = acceptor.ssc.accept()
-                    if (channel != null) {
-                        channel.configureBlocking(false)
-                        val transport = Transport(channel = channel, error = acceptor.error)
-                        channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
-                        transports.add(transport)
-                        acceptor.accept.onConnect(transport)
-                    }
-                } catch (e: IOException) {
-                    e.printStackTrace(System.out)
-                }
-            })
-        }, 0, acceptPolling, acceptPollingUnit)
-
-        //Message polling bus
-        mainService.scheduleWithFixedDelay({
+    constructor() {
+        service.scheduleWithFixedDelay({
             try {
                 selector.select(100)
                 selector.selectedKeys().forEach {
@@ -92,7 +68,25 @@ open class MessageNode {
             } catch (e: IOException) {
                 e.printStackTrace(System.out)
             }
-        }, 0, messagePolling, messagePollingUnit)
+            servers.forEach({ port, acceptor ->
+                try {
+                    val channel = acceptor.ssc.accept()
+                    if (channel != null) {
+                        channel.configureBlocking(false)
+                        val transport = Transport(channel = channel, error = acceptor.error)
+                        channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
+                        transports.add(transport)
+                        acceptor.accept.onConnect(transport)
+                    }
+                } catch (e: IOException) {
+                    e.printStackTrace(System.out)
+                }
+            })
+        }, 0, POLLING, POLLING_UNIT)
+    }
+
+    constructor(protocol: Protocol) : this() {
+        this.protocol = protocol;
     }
 
     /***
@@ -108,7 +102,7 @@ open class MessageNode {
                 //构造反射调用所需的实例, 注意为每个类保留一个公共的空构造方法
                 try {
                     val clazz = method.declaringClass
-                    if (!instanceMap.containsKey(clazz)) instanceMap.put(clazz, clazz.newInstance())
+                    if (!invokers.containsKey(clazz)) invokers.put(clazz, clazz.newInstance())
                     val flag = method.getAnnotation(OnEvent::class.java)
                     //检查是否存在该tag
                     if (handlers[flag.value] != null)
@@ -129,7 +123,7 @@ open class MessageNode {
                                 }
                             })
                             //反射调用方法
-                            method.invoke(instanceMap[method.declaringClass], *param)
+                            method.invoke(invokers[method.declaringClass], *param)
                         } catch(e: Exception) {
                             e.printStackTrace()
                         }
@@ -151,10 +145,10 @@ open class MessageNode {
             set.forEach { clazz ->
                 try {
                     if (clazz.isAnnotationPresent(Connect::class.java)) {
-                        if (!instanceMap.containsKey(clazz)) {
-                            instanceMap.put(clazz, clazz.newInstance())
+                        if (!invokers.containsKey(clazz)) {
+                            invokers.put(clazz, clazz.newInstance())
                         }
-                        val instance = instanceMap[clazz]!! as BaseConnector
+                        val instance = invokers[clazz]!! as BaseConnector
 
                         val flag = clazz.getAnnotation(Connect::class.java)!!
                         flag.value.forEach { host ->
@@ -163,10 +157,10 @@ open class MessageNode {
                         }
                     }
                     if (clazz.isAnnotationPresent(Listen::class.java)) {
-                        if (!instanceMap.containsKey(clazz)) {
-                            instanceMap.put(clazz, clazz.newInstance())
+                        if (!invokers.containsKey(clazz)) {
+                            invokers.put(clazz, clazz.newInstance())
                         }
-                        val instance = instanceMap[clazz]!! as BaseConnector
+                        val instance = invokers[clazz]!! as BaseConnector
 
                         val flag = clazz.getAnnotation(Listen::class.java)!!
                         flag.value.forEach { port ->
@@ -202,7 +196,7 @@ open class MessageNode {
     fun connect(host: String, port: Int,
                 success: ConnectHandler = ConnectHandler { },
                 fail: ErrorHandler = ErrorHandler { }): MessageNode {
-        connService.submit {
+        connector.submit {
             try {
                 val channel = SocketChannel.open()
                 channel.connect(InetSocketAddress(host, port))
@@ -241,7 +235,6 @@ open class MessageNode {
         return this
     }
 
-
     /***
      * 关闭本地端口
      */
@@ -257,44 +250,26 @@ open class MessageNode {
      * 关闭MessageNode
      */
     fun terminate() {
-        mainService.shutdownNow()
-        ioService.shutdownNow()
-        connService.shutdownNow()
+        service.shutdownNow()
+        connector.shutdownNow()
         eventService.shutdownNow()
+        protocol.close()
         transports.forEach({ this.disconnect(it) })
         servers.forEach({ port, acceptor -> shutdown(port) })
     }
 
-    /***
-     * IO 协议: 从 byte array 中读取周期中所有Event事件
-     */
     private fun readMessage(transport: Transport) {
         val buffer = ByteBuffer.allocate(32 * 1024)
         val flag = transport.channel.read(buffer);
         if (flag == -1) throw IOException("session disconnected")
         if (buffer.position() == 0) return
         val bytes = buffer.array().copyOf(buffer.position())
-        ioService.submit {
-            BufferedReader(InputStreamReader(ByteArrayInputStream(bytes))).use {
-                while (true) {
-                    val line = it.readLine() ?: break
-                    try {
-                        val event = JSON.parseObject(line, Event::class.java)
-                        eventService.submit {
-                            handlers[event.tag]?.invoke(transport, event.obj)
-                        }
-                    } catch(ignore: Exception) {
-
-                    }
-                }
-            }
-        }
+        protocol.antiSerialize(bytes, { eventService.submit { handlers[it.tag]?.invoke(transport, it.obj) } })
     }
 
-    /***
-     * IO 协议: 发送序列化一个event
-     */
     private fun sendMessage(transport: Transport, event: Event) {
-        transport.channel.write(ByteBuffer.wrap((JSON.toJSONString(event) + "\n").toByteArray()))
+        protocol.serialize(event, { transport.channel.write(ByteBuffer.wrap(it)) })
     }
+
+    data class Acceptor(val port: Int, val ssc: ServerSocketChannel, val accept: ConnectHandler, val error: ErrorHandler)
 }

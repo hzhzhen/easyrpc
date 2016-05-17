@@ -2,6 +2,7 @@ group 'net.easyrpc'
 version project_version
 
 allprojects {
+    ext.kotlin_version = '1.0.2'
     repositories {
         mavenCentral()
         maven { url "http://jcenter.bintray.com" }
@@ -14,7 +15,7 @@ allprojects {
             maven { url 'https://repo.spring.io/libs-milestone' }
         }
         dependencies {
-            classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.1'
+            classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.2'
         }
     }
 }
