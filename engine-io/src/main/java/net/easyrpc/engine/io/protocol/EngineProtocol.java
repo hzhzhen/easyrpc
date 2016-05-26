@@ -1,7 +1,6 @@
 package net.easyrpc.engine.io.protocol;
 
 import net.easyrpc.engine.io.model.Message;
-import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
@@ -12,9 +11,9 @@ import java.io.IOException;
  */
 public interface EngineProtocol {
 
-    void antiSerialize(@NotNull byte[] bytes, AntiSerializeCallback callback);
+    void antiSerialize(byte[] bytes, AntiSerializeCallback callback);
 
-    void serialize(@NotNull Message message, SerializeCallBack callback);
+    void serialize(Message message, SerializeCallBack callback);
 
     void close();
 

@@ -126,37 +126,35 @@ public interface Engine {
 public class SpeedTest {
 
     volatile static long c = 1;
-    static final int TIME = 10;
+    static final int TIME = 30;
     static long start;
 
     public static void main(String... args) throws IOException, InterruptedException {
-        //node1 会监听 8090 端口
-        //当handler1接收到一个数字时会把这个数字+1, 并发送到node2节点下的handler2
-        MessageNode node1 = new MessageNode().register("handler1", long.class, (transport, object) -> {
-            c = object;
-            transport.send("handler2", object + 1);
-        }).listen(8090, transport -> {
+        Engine node1 = new BaseEngine().subscribe("handler1", (transport, id, data) -> {
+            c++;
+            //System.out.println("handler1:" + id);
+            transport.send("handler2", "a".getBytes());
+        }).listen(new InetSocketAddress(8090), (hash, transport) -> {
         }, error -> {
         });
 
-        //node2 会连接到 localhost:8090
-        //当handler2接收到一个数字时会把这个数字+1, 并发送到node1节点下的handler1
-        MessageNode node2 = new MessageNode().register("handler2", long.class, (transport, object) -> {
-            c = object;
-            transport.send("handler1", object + 1);
-        }).connect("localhost", 8090, transport -> {
-            transport.send("handler1", 1L);
+        Engine node2 = new BaseEngine().subscribe("handler2", (transport, id, data) -> {
+            c++;
+            //System.out.println("handler2:" + id);
+            transport.send("handler1", "a".getBytes());
+        }).connect(new InetSocketAddress("localhost", 8090), (hash, transport) -> {
+            transport.send("handler1", (1L + "").getBytes());
             start = System.currentTimeMillis();
         }, error -> {
         });
-
-        Thread.sleep(TIME * 1000); //持续一段时间
+        Thread.sleep(TIME * 1000);
         long time = System.currentTimeMillis() - start;
-        System.out.printf("Speed content: %d message per second%n", c * 1000 / time);//计算每秒的发信速度
-       
-        node1.terminate(); //关闭节点
+        System.out.printf("Speed content: %d message per second%n", c * 1000 / time);
+
+        node1.terminate();
         node2.terminate();
     }
+    
 }
 ```
 

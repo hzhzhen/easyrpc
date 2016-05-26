@@ -5,11 +5,14 @@ import net.easyrpc.request.io.error.FailError;
 import net.easyrpc.request.io.error.TimeoutError;
 import net.easyrpc.request.io.handler.Callback;
 import net.easyrpc.request.io.handler.RequestHandler;
+import net.easyrpc.request.io.protocol.RequestProtocol;
 
-public interface Node {
+public abstract class Node {
 
-    static Node bind(Engine engine) {
-        return new NodeImpl(engine);
+    protected RequestProtocol protocol;
+
+    public Node(RequestProtocol protocol) {
+        this.protocol = protocol;
     }
 
     /***
@@ -19,7 +22,7 @@ public interface Node {
      * @param handler 数据响应方法
      * @return this
      */
-    Node onRequest(String tag, RequestHandler handler);
+    public abstract Node onRequest(String tag, RequestHandler handler);
 
     /***
      * 异步执行请求
@@ -29,7 +32,7 @@ public interface Node {
      * @param data     数据内容
      * @param callback 执行响应
      */
-    void request(int hash, String tag, byte[] data, Callback callback);
+    public abstract void request(int hash, String tag, byte[] data, Callback callback);
 
     /***
      * 同步执行请求
@@ -41,6 +44,9 @@ public interface Node {
      * @throws TimeoutError 网络请求超时
      * @throws FailError    响应错误
      */
-    byte[] request(int hash, String tag, byte[] data) throws TimeoutError, FailError;
+    public abstract byte[] request(int hash, String tag, byte[] data) throws TimeoutError, FailError;
 
+    public static Node bind(Engine engine) {
+        return new NodeImpl(engine);
+    }
 }

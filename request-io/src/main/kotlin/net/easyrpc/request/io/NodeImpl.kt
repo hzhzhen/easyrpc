@@ -7,22 +7,43 @@ import net.easyrpc.request.io.handler.Callback
 import net.easyrpc.request.io.handler.RequestHandler
 import net.easyrpc.request.io.model.Request
 import net.easyrpc.request.io.model.Response
+import net.easyrpc.request.io.protocol.Status
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-internal class NodeImpl(val engine: Engine) : Node {
+internal class NodeImpl(val engine: Engine) : Node(JsonRequestProtocol()) {
 
     private val reqTasks = ConcurrentHashMap<String, Task>()
     private val handlers = ConcurrentHashMap<String, RequestHandler>()
     private val service = Executors.newCachedThreadPool()
 
     init {
-        engine.subscribe("request", { transport, id, data ->
+        engine.subscribe("/request-io/request", { transport, id, packageData ->
 
-            transport.send("response", data)
-        }).subscribe("response", { transport, id, data ->
+            val request = protocol.antiSerializeRequest(packageData) ?: return@subscribe
+
+            val response: Response;
+
+            val handler = handlers[request.tag];
+            if (handler == null) {
+                response = Response(id, Status.NOT_FOUND.code, Status.NOT_FOUND.message.toByteArray())
+            } else {
+                try {
+                    response = Response(id, Status.OK.code, handler.onData(request.data))
+                } catch (e: Exception) {
+                    response = Response(id, Status.REMOTE_ERROR.code, e.toString().toByteArray())
+                }
+            }
+
+            transport.send("/request-io/response", protocol.serializeResponse(response.meta(id)))
+
+        }).subscribe("/request-io/response", { transport, id, packageData ->
+
+            val response = protocol.antiSerializeResponse(packageData) ?: return@subscribe
+            val task = reqTasks["${transport.hashCode()}-$id"] ?: return@subscribe
+            task.callback(response)
 
         })
     }
@@ -34,9 +55,9 @@ internal class NodeImpl(val engine: Engine) : Node {
 
     @Throws(FailError::class, TimeoutError::class)
     override fun request(hash: Int, tag: String, data: ByteArray): ByteArray {
-        val id = engine.send(hash, "request", data);
+        val id = engine.send(hash, "/request-io/request", protocol.serializeRequest(Request(tag, data)));
         if (id == -1L) throw TimeoutError(hash);
-        val newTask = Task(request = Request(tag, data), tcpHash = hash, requestId = id)
+        val newTask = Task(tcpHash = hash, requestId = id)
         reqTasks[newTask.hash()] = newTask
         return newTask.execute().data;
     }
@@ -53,7 +74,7 @@ internal class NodeImpl(val engine: Engine) : Node {
         }
     }
 
-    private class Task(val request: Request, val tcpHash: Int, val requestId: Long) {
+    private class Task(val tcpHash: Int, val requestId: Long) {
 
         private val latch = CountDownLatch(1)
         private val response = Array<Response?>(1, { i -> null });
