@@ -74,7 +74,8 @@ internal class NodeImpl(val engine: Engine) : Node(JsonRequestProtocol()) {
         }
     }
 
-    private class Task(val tcpHash: Int, val requestId: Long) {
+    private class Task(val tcpHash: Int, val requestId: Long,
+                       val timeout: Long = 3L, val timeUnit: TimeUnit = TimeUnit.SECONDS) {
 
         private val latch = CountDownLatch(1)
         private val response = Array<Response?>(1, { i -> null });
@@ -83,10 +84,10 @@ internal class NodeImpl(val engine: Engine) : Node(JsonRequestProtocol()) {
 
         @Throws(FailError::class, TimeoutError::class)
         fun execute(): Response {
-            latch.await(3, TimeUnit.SECONDS)
+            latch.await(timeout, timeUnit)
             try {
                 val result = this.response[0] ?: throw TimeoutError(tcpHash)
-                if (result.status != 200) throw FailError(tcpHash, result.status)
+                if (result.status != Status.OK.code) throw FailError(tcpHash, result.status)
                 return result
             } catch(error: InterruptedException) {
                 throw FailError(tcpHash, error.message)
