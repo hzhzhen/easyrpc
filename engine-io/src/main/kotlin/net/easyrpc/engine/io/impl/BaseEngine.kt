@@ -1,10 +1,12 @@
-package net.easyrpc.engine.io
+package net.easyrpc.engine.io.impl
 
+import net.easyrpc.engine.io.Engine
 import net.easyrpc.engine.io.handler.ConnectHandler
+import net.easyrpc.engine.io.handler.DataHandler
 import net.easyrpc.engine.io.handler.ErrorHandler
-import net.easyrpc.engine.io.handler.MessageHandler
-import net.easyrpc.engine.io.protocol.SerializeProtocol
-import net.easyrpc.engine.io.protocol.SerializeProtocol.Message
+import net.easyrpc.engine.io.model.Message
+import net.easyrpc.engine.io.model.Transport
+import net.easyrpc.engine.io.protocol.EngineProtocol
 import java.io.IOException
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
@@ -22,8 +24,8 @@ import java.util.concurrent.TimeUnit
 open class BaseEngine : Engine {
 
     //编码协议,默认为Json编码
-    protected var protocol: SerializeProtocol = BaseProtocol()
-    protected val handlers = ConcurrentHashMap<String, MessageHandler>()
+    protected var protocol: EngineProtocol = JsonEngineProtocol()
+    protected val handlers = ConcurrentHashMap<String, DataHandler>()
     private val servers = ConcurrentHashMap<InetSocketAddress, Acceptor>()
     private val transports = ConcurrentHashMap<Int, Transport>()
 
@@ -56,7 +58,7 @@ open class BaseEngine : Engine {
                             } while (true)
                         }
                     } catch (e: IOException) {
-                        transport.error.onError(e)
+                        transport.errorHandler.onError(e)
                         disconnect(transport.hashCode())//handle exception if disconnected
                     }
                 }
@@ -68,7 +70,7 @@ open class BaseEngine : Engine {
                     val channel = acceptor.ssc.accept()
                     if (channel != null) {
                         channel.configureBlocking(false)
-                        val transport = Transport(channel = channel, error = acceptor.error)
+                        val transport = Transport(channel, acceptor.error)
                         channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
                         transports.put(transport.hashCode(), transport)
                         acceptor.accept.onEvent(transport.hashCode(), transport)
@@ -80,8 +82,8 @@ open class BaseEngine : Engine {
         }, 0, POLLING, POLLING_UNIT)
     }
 
-    constructor(protocol: SerializeProtocol) : this() {
-        this.protocol = protocol;
+    constructor(protocol: EngineProtocol) : this() {
+        this.protocol = protocol
     }
 
     override fun connect(address: InetSocketAddress, onSuccess: ConnectHandler, onError: ErrorHandler): Engine {
@@ -90,7 +92,7 @@ open class BaseEngine : Engine {
                 val channel = SocketChannel.open()
                 channel.connect(address)
                 channel.configureBlocking(false)
-                val transport = Transport(channel = channel, error = onError)
+                val transport = Transport(channel, onError)
                 channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
                 transports.put(transport.hashCode(), transport)
                 onSuccess.onEvent(transport.hashCode(), transport)
@@ -131,13 +133,14 @@ open class BaseEngine : Engine {
         }
     }
 
-    override fun subscribe(metaTag: String, handler: MessageHandler): BaseEngine {
+    override fun subscribe(metaTag: String, handler: DataHandler): BaseEngine {
         handlers.put(metaTag, handler)
         return this
     }
 
-    override fun send(hash: Int, category: String, data: ByteArray) {
-        transports[hash]?.send(category, data)
+    override fun send(hash: Int, category: String, data: ByteArray): Long {
+        val transport = transports[hash] ?: return -1
+        return transport.send(category, data)
     }
 
     override fun terminate() {

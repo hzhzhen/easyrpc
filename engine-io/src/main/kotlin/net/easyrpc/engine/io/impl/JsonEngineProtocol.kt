@@ -1,18 +1,18 @@
-package net.easyrpc.engine.io
+package net.easyrpc.engine.io.impl
 
 import com.alibaba.fastjson.JSON
-import net.easyrpc.engine.io.protocol.SerializeProtocol
-import net.easyrpc.engine.io.protocol.SerializeProtocol.Message
+import net.easyrpc.engine.io.model.Message
+import net.easyrpc.engine.io.protocol.EngineProtocol
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.util.concurrent.Executors
 
-class BaseProtocol : SerializeProtocol {
+class JsonEngineProtocol : EngineProtocol {
 
     private val service = Executors.newSingleThreadExecutor()
 
-    override fun antiSerialize(bytes: ByteArray, callback: SerializeProtocol.AntiSerializeCallback) {
+    override fun antiSerialize(bytes: ByteArray, callback: EngineProtocol.AntiSerializeCallback) {
         service.submit {
             BufferedReader(InputStreamReader(ByteArrayInputStream(bytes))).use {
                 while (true) {
@@ -26,7 +26,7 @@ class BaseProtocol : SerializeProtocol {
         }
     }
 
-    override fun serialize(message: Message, callback: SerializeProtocol.SerializeCallBack) {
+    override fun serialize(message: Message, callback: EngineProtocol.SerializeCallBack) {
         service.submit({
             callback.onAntiSerialize((JSON.toJSONString(message) + "\n").toByteArray())
         });

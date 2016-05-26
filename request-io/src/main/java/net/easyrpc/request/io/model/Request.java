@@ -6,4 +6,11 @@ public class Request {
 
     public byte[] data;
 
+    public Request() {
+    }
+
+    public Request(String tag, byte[] data) {
+        this.tag = tag;
+        this.data = data;
+    }
 }

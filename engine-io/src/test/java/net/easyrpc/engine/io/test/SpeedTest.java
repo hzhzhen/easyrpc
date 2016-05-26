@@ -1,6 +1,6 @@
 package net.easyrpc.engine.io.test;
 
-import net.easyrpc.engine.io.BaseEngine;
+import net.easyrpc.engine.io.impl.BaseEngine;
 import net.easyrpc.engine.io.Engine;
 
 import java.io.IOException;

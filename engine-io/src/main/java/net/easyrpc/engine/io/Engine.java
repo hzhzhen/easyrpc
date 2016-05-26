@@ -1,8 +1,8 @@
 package net.easyrpc.engine.io;
 
 import net.easyrpc.engine.io.handler.ConnectHandler;
+import net.easyrpc.engine.io.handler.DataHandler;
 import net.easyrpc.engine.io.handler.ErrorHandler;
-import net.easyrpc.engine.io.handler.MessageHandler;
 
 import java.net.InetSocketAddress;
 
@@ -48,7 +48,7 @@ public interface Engine {
      * @param category 消息分类
      * @param handler  订阅行为
      */
-    Engine subscribe(String category, MessageHandler handler);
+    Engine subscribe(String category, DataHandler handler);
 
     /***
      * 发布一则消息
@@ -57,7 +57,7 @@ public interface Engine {
      * @param category 消息分类
      * @param data     消息主体数据
      */
-    void send(int hash, String category, byte[] data);
+    long send(int hash, String category, byte[] data);
 
     /***
      * 关闭 Engine 实例

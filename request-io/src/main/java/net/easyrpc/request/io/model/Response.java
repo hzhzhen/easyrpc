@@ -6,6 +6,8 @@ public class Response {
 
     public String tag;
 
+    public int status;
+
     public byte[] data;
 
 }
