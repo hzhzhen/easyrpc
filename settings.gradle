@@ -1,3 +1,6 @@
 rootProject.name = 'easyrpc'
+include 'engine-io'
+include 'request-io'
 include 'message-io'
+include 'rpc'
 
