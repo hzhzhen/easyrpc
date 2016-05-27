@@ -14,7 +14,7 @@ public abstract class BaseRequest {
     public abstract void onResponse(byte[] data);
 
     public long timeout() {
-        return 2000;
+        return 1800;
     }
 
     public void onTimeout(String message) {

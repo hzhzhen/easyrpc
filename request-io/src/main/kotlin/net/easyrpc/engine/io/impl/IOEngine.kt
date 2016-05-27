@@ -24,14 +24,14 @@ import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * @author chpengzh
  */
-open class EngineNode : Engine {
+open class IOEngine : Engine {
 
     //编码协议,默认为Json编码
     protected var engineProtocol: EngineProtocol = JsonEngineProtocol()
@@ -43,7 +43,7 @@ open class EngineNode : Engine {
     private val servers = ConcurrentHashMap<InetSocketAddress, Acceptor>()
     private val transports = ConcurrentHashMap<Int, Transport>()
 
-    val requestContainer = RequestContainer()
+    private val requestContainer = RequestContainer()
 
     //IO事件处理Selector
     private val selector = Selector.open()
@@ -119,31 +119,21 @@ open class EngineNode : Engine {
         }
     }
 
-    override fun subscribe(metaTag: String, handler: DataHandler): EngineNode {
-        eventHandlers.put(metaTag, handler)
-        return this
-    }
-
-    override fun send(hash: Int, category: String, data: ByteArray): Long {
-        val transport = transports[hash] ?: return -1
-        return transport.send(category, data)
-    }
-
     override fun onRequest(tag: String, handler: RequestHandler): Engine {
         requestHandlers.put(tag, handler)
         return this
     }
 
-    override fun request(executor: ExecutorService, request: BaseRequest) {
-        val id = send(request.transportHash, "/request-io/request",
-                requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data)));
-        if (id == -1L) {
+    override fun send(request: BaseRequest) {
+        val transport = transports[request.transportHash]
+        if (transport == null) {
             eventService.submit {
                 request.onTimeout("Transport@${request.transportHash} is not exists!")
                 request.onComplete()
             }
         } else {
-            requestContainer.add(request.transportHash, id, request);
+            requestContainer.add(request.transportHash, transport.send("/request-io/request",
+                    requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data))), request);
         }
     }
 
@@ -158,11 +148,10 @@ open class EngineNode : Engine {
         net.shutdown()
     }
 
-    //request/response 的消息订阅
+    //send/response 的消息订阅
     private fun subscribeRequest() {
-        subscribe("/request-io/request", { transport, id, packageData ->
-
-            val request = requestProtocol.antiSerializeRequest(packageData) ?: return@subscribe
+        eventHandlers.put("/request-io/request", DataHandler { transport, id, packageData ->
+            val request = requestProtocol.antiSerializeRequest(packageData) ?: return@DataHandler
 
             val response: Response;
 
@@ -181,11 +170,10 @@ open class EngineNode : Engine {
             transport.send("/request-io/response", requestProtocol.serializeResponse(response.meta(id)))
 
         })
+        eventHandlers.put("/request-io/response", DataHandler { transport, id, packageData ->
 
-        subscribe("/request-io/response", { transport, id, packageData ->
-
-            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@subscribe
-            val request = requestContainer.get(transport.hashCode(), response.requestId) ?: return@subscribe
+            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@DataHandler
+            val request = requestContainer.get(transport.hashCode(), response.requestId) ?: return@DataHandler
 
             when {
                 response.status == Status.OK.code ->
@@ -266,23 +254,26 @@ open class EngineNode : Engine {
 
     private inner class Acceptor(val ssc: ServerSocketChannel, val accept: ConnectHandler, val error: ErrorHandler)
 
-    inner class RequestContainer {
+    private inner class RequestContainer {
 
         val tasks = ConcurrentHashMap<String, Task> ()
+        val updateLock: ReentrantLock = ReentrantLock()
 
         fun update() {
-            val now = System.currentTimeMillis();
-            tasks.entries.removeAll {
-                if (it.value.used) return@removeAll true
-                val flag = now > it.value.timestamp + it.value.timeout
-                if (flag) {
-                    eventService.execute {
-                        it.value.request.onTimeout("Transport@${it.value.request.transportHash} is request timeout, " +
-                                "please make sure if it is connectible!")
-                        it.value.request.onComplete()
+            updateLock.apply {
+                val now = System.currentTimeMillis();
+                tasks.entries.removeAll {
+                    if (now > it.value.timestamp + it.value.timeout) {
+                        eventService.execute {
+                            it.value.request.onTimeout("Transport@${it.value.request.transportHash}" +
+                                    " is request timeout, please make sure if it is connectible!")
+                            it.value.request.onComplete()
+                        }
+                        return@removeAll true
+                    } else {
+                        return@removeAll false
                     }
                 }
-                return@removeAll flag
             }
         }
 
@@ -291,17 +282,21 @@ open class EngineNode : Engine {
         }
 
         fun get(tcpHash: Int, id: Long): BaseRequest? {
-            val task = tasks["$tcpHash-$id"]
-            if (task == null) {
-                return null
-            } else {
-                task.used = true
-                return task.request;
+            updateLock.lock()
+            try {
+                val task = tasks["$tcpHash-$id"]
+                if (task == null) {
+                    return null
+                } else {
+                    tasks.remove("$tcpHash-$id")
+                    return task.request;
+                }
+            } finally {
+                updateLock.unlock()
             }
         }
 
-        inner class Task(val request: BaseRequest, @Volatile var used: Boolean = false,
-                         val timeout: Long, var timestamp: Long = System.currentTimeMillis())
+        inner class Task(val request: BaseRequest, val timeout: Long, var timestamp: Long = System.currentTimeMillis())
     }
 }
 
@@ -318,6 +313,7 @@ class JsonEngineProtocol : EngineProtocol {
                     try {
                         callback.onSerialize(JSON.parseObject(line, Message::class.java));
                     } catch(ignore: Exception) {
+                        //ignore.printStackTrace()
                     }
                 }
             }
