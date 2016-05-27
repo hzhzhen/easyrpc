@@ -1,6 +1,6 @@
 rootProject.name = 'easyrpc'
-include 'lite-mq-client'
-include 'lite-mq-server'
+include 'lite-mq-consumer'
+include 'lite-mq-provider'
 include 'request-io'
 include 'rpc'
 
