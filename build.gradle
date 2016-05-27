@@ -6,7 +6,6 @@ allprojects {
     repositories {
         mavenCentral()
         maven { url "http://jcenter.bintray.com" }
-        maven { url "http://repo.akka.io/snapshots/" }
     }
 
     buildscript {
@@ -15,7 +14,7 @@ allprojects {
             maven { url "http://jcenter.bintray.com" }
         }
         dependencies {
-            classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.2'
+            classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.0.2"
         }
     }
 }
