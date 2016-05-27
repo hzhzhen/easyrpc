@@ -3,11 +3,9 @@ package net.easyrpc.engine.io.impl
 import com.alibaba.fastjson.JSON
 import net.easyrpc.engine.io.Engine
 import net.easyrpc.engine.io.handler.ConnectHandler
-import net.easyrpc.engine.io.handler.DataHandler
 import net.easyrpc.engine.io.handler.ErrorHandler
 import net.easyrpc.engine.io.handler.RequestHandler
 import net.easyrpc.engine.io.model.BaseRequest
-import net.easyrpc.engine.io.model.Transport
 import net.easyrpc.engine.io.protocol.EngineProtocol
 import net.easyrpc.engine.io.protocol.EngineProtocol.Message
 import net.easyrpc.engine.io.protocol.RequestProtocol
@@ -24,6 +22,7 @@ import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
@@ -37,11 +36,12 @@ open class IOEngine : Engine {
     protected var engineProtocol: EngineProtocol = JsonEngineProtocol()
     protected var requestProtocol: RequestProtocol = JsonRequestProtocol()
 
-    protected val eventHandlers = ConcurrentHashMap<String, DataHandler>()
+    protected val eventHandlers = ConcurrentHashMap<String, (Int, Long, ByteArray) -> Unit>()
     protected val requestHandlers = ConcurrentHashMap<String, RequestHandler>()
 
     private val servers = ConcurrentHashMap<InetSocketAddress, Acceptor>()
     private val transports = ConcurrentHashMap<Int, Transport>()
+    private val messageQueue = ConcurrentLinkedQueue<MessageTask>()
 
     private val requestContainer = RequestContainer()
 
@@ -62,7 +62,6 @@ open class IOEngine : Engine {
             ioPolling()//连接数据轮询
             acceptPolling()//请求连接轮询
             requestContainer.update()//请求任务状态更新
-            requestContainer.update()
         }, 0, POLLING, POLLING_UNIT)
     }
 
@@ -81,7 +80,7 @@ open class IOEngine : Engine {
                 val transport = Transport(channel, onError)
                 channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
                 transports.put(transport.hashCode(), transport)
-                onSuccess.onEvent(transport.hashCode(), transport)
+                onSuccess.onEvent(transport.hashCode())
             } catch(error: IOException) {
                 onError.onError(error)
             }
@@ -102,7 +101,6 @@ open class IOEngine : Engine {
         net.submit {
             val transport = transports[hash];
             if (transport != null) {
-                transport.taskQueue.clear()
                 transport.channel.close()
                 transports.remove(hash)
             }
@@ -128,12 +126,16 @@ open class IOEngine : Engine {
         val transport = transports[request.transportHash]
         if (transport == null) {
             eventService.submit {
-                request.onTimeout("Transport@${request.transportHash} is not exists!")
-                request.onComplete()
+                try {
+                    request.onTimeout("Transport@${request.transportHash} is not exists!")
+                } finally {
+                    request.onComplete()
+                }
             }
         } else {
-            requestContainer.add(request.transportHash, transport.send("/request-io/request",
-                    requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data))), request);
+            val id = appendQueue(transport, "/request-io/request",
+                    requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data)))
+            requestContainer.add(request.transportHash, id, request);
         }
     }
 
@@ -150,12 +152,12 @@ open class IOEngine : Engine {
 
     //send/response 的消息订阅
     private fun subscribeRequest() {
-        eventHandlers.put("/request-io/request", DataHandler { transport, id, packageData ->
-            val request = requestProtocol.antiSerializeRequest(packageData) ?: return@DataHandler
+        eventHandlers.put("/request-io/request", { tcpHash, id, packageData ->
+            val request = requestProtocol.antiSerializeRequest(packageData) ?: return@put
 
             val response: Response;
 
-            val handler = requestHandlers[request.tag];
+            val handler = requestHandlers[request.tag]
             if (handler == null) {
                 response = Response(id, Status.NOT_FOUND.code, Status.NOT_FOUND.message.toByteArray())
             } else {
@@ -166,24 +168,22 @@ open class IOEngine : Engine {
                     response = Response(id, Status.REMOTE_ERROR.code, e.toString().toByteArray())
                 }
             }
-
-            transport.send("/request-io/response", requestProtocol.serializeResponse(response.meta(id)))
-
+            appendQueue(transports[tcpHash]!!, "/request-io/response",
+                    requestProtocol.serializeResponse(response.meta(id)))
         })
-        eventHandlers.put("/request-io/response", DataHandler { transport, id, packageData ->
+        eventHandlers.put("/request-io/response", { tcpHash, id, packageData ->
+            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@put
+            val request = requestContainer.remove(tcpHash, response.requestId) ?: return@put
+            try {
+                when {
+                    response.status == Status.OK.code -> request.onResponse(response.data)
 
-            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@DataHandler
-            val request = requestContainer.get(transport.hashCode(), response.requestId) ?: return@DataHandler
-
-            when {
-                response.status == Status.OK.code ->
-                    request.onResponse(response.data)
-                else ->
-                    request.onFail(response.status, "Request sending to transport@" +
-                            "${transport.hashCode()} fail for ${String(response.data)}")
+                    else -> request.onFail(response.status, "Request sending to transport@" +
+                            "$tcpHash fail for ${String(response.data)}")
+                }
+            } finally {
+                request.onComplete()
             }
-            request.onComplete()
-
         })
     }
 
@@ -198,9 +198,12 @@ open class IOEngine : Engine {
                         readMessage(transport)
                     } else if (it.isWritable) {
                         do {
-                            val event = transport.taskQueue.poll()
-                            if (event != null) sendMessage(transport, event)
-                            else break;
+                            val event = messageQueue.poll()
+                            if (event != null) {
+                                val tcp = transports[event.tcpHash]
+                                val msg = event.message
+                                if (tcp != null && msg != null) sendMessage(tcp, msg)
+                            } else break;
                         } while (true)
                     }
                 } catch (e: IOException) {
@@ -208,8 +211,7 @@ open class IOEngine : Engine {
                     disconnect(transport.hashCode())//handle exception if disconnected
                 }
             }
-        } catch (e: IOException) {
-            e.printStackTrace(System.out)
+        } catch (ignore: IOException) {
         }
     }
 
@@ -223,14 +225,14 @@ open class IOEngine : Engine {
                     val transport = Transport(channel, acceptor.error)
                     channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
                     transports.put(transport.hashCode(), transport)
-                    acceptor.accept.onEvent(transport.hashCode(), transport)
+                    acceptor.accept.onEvent(transport.hashCode())
                 }
-            } catch (e: IOException) {
-                e.printStackTrace(System.out)
+            } catch (ignore: IOException) {
             }
         })
     }
 
+    //读消息
     private fun readMessage(transport: Transport) {
         transport.channel.blockingLock().apply {
             val buffer = ByteBuffer.allocate(32 * 1024)
@@ -239,11 +241,12 @@ open class IOEngine : Engine {
             if (buffer.position() == 0) return
             val bytes = buffer.array().copyOf(buffer.position())
             engineProtocol.antiSerialize(bytes, {
-                eventService.submit { eventHandlers[it.tag]?.handle(transport, it.id, it.data) }
+                eventService.submit { eventHandlers[it.tag]?.invoke(transport.hashCode(), it.id, it.data) }
             })
         }
     }
 
+    //写消息
     private fun sendMessage(transport: Transport, message: Message) {
         transport.channel.blockingLock().apply {
             engineProtocol.serialize(message, {
@@ -252,7 +255,22 @@ open class IOEngine : Engine {
         }
     }
 
+    //向消息队列中添加消息
+    private fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
+        val task = MessageTask(transport.hashCode())
+        task.obtain(Message(task.hashCode().toLong(), tag, bytes))
+        messageQueue.add(task)
+        return task.hashCode().toLong()
+    }
+
     private inner class Acceptor(val ssc: ServerSocketChannel, val accept: ConnectHandler, val error: ErrorHandler)
+
+    private inner class MessageTask(val tcpHash: Int) {
+        var message: Message? = null;
+        fun obtain(msg: Message) {
+            message = msg;
+        }
+    }
 
     private inner class RequestContainer {
 
@@ -265,9 +283,12 @@ open class IOEngine : Engine {
                 tasks.entries.removeAll {
                     if (now > it.value.timestamp + it.value.timeout) {
                         eventService.execute {
-                            it.value.request.onTimeout("Transport@${it.value.request.transportHash}" +
-                                    " is request timeout, please make sure if it is connectible!")
-                            it.value.request.onComplete()
+                            try {
+                                it.value.request.onTimeout("Transport@${it.value.request.transportHash}" +
+                                        " is request timeout, please make sure if it is connectible!")
+                            } finally {
+                                it.value.request.onComplete()
+                            }
                         }
                         return@removeAll true
                     } else {
@@ -278,10 +299,12 @@ open class IOEngine : Engine {
         }
 
         fun add(tcpHash: Int, id: Long, request: BaseRequest) {
-            tasks.put("$tcpHash-$id", Task(request = request, timeout = request.timeout()))
+            updateLock.apply {
+                tasks.put("$tcpHash-$id", Task(request = request, timeout = request.timeout()))
+            }
         }
 
-        fun get(tcpHash: Int, id: Long): BaseRequest? {
+        fun remove(tcpHash: Int, id: Long): BaseRequest? {
             updateLock.lock()
             try {
                 val task = tasks["$tcpHash-$id"]
@@ -298,8 +321,9 @@ open class IOEngine : Engine {
 
         inner class Task(val request: BaseRequest, val timeout: Long, var timestamp: Long = System.currentTimeMillis())
     }
-}
 
+    inner class Transport(var channel: SocketChannel, var errorHandler: ErrorHandler)
+}
 
 class JsonEngineProtocol : EngineProtocol {
 

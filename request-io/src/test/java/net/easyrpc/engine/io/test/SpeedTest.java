@@ -3,9 +3,9 @@ package net.easyrpc.engine.io.test;
 import net.easyrpc.engine.io.Engine;
 import net.easyrpc.engine.io.handler.ConnectHandler;
 import net.easyrpc.engine.io.handler.ErrorHandler;
+import net.easyrpc.engine.io.handler.RequestHandler;
 import net.easyrpc.engine.io.impl.IOEngine;
 import net.easyrpc.engine.io.model.BaseRequest;
-import net.easyrpc.engine.io.model.Transport;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -33,13 +33,13 @@ public class SpeedTest {
 
         node1 = new IOEngine().listen(new InetSocketAddress(8090), new ConnectHandler() {
             @Override
-            public void onEvent(int hash, Transport transport) {
+            public void onEvent(final int tcpHash) {
                 start = System.currentTimeMillis();
-                for (int i = 0; i < COUNTS; i++) {
+                for (int j = 0; j < COUNTS; j++) {
                     node1.send(new BaseRequest() {
                         @Override
                         public int getTransportHash() {
-                            return hash;
+                            return tcpHash;
                         }
 
                         @Override
@@ -74,6 +74,7 @@ public class SpeedTest {
                         }
                     });
                 }
+
             }
         }, new ErrorHandler() {
             @Override
@@ -82,13 +83,19 @@ public class SpeedTest {
             }
         });
 
-        node2 = new IOEngine().onRequest("handler", origin -> "ok!".getBytes())
-                .connect(new InetSocketAddress("localhost", 8090), new ConnectHandler() {
+        node2 = new IOEngine().onRequest("handler", new RequestHandler() {
+            @Override
+            public byte[] onData(byte[] data) {
+                return "ok".getBytes();
+            }
+        }).connect(new InetSocketAddress("localhost", 8090),
+                new ConnectHandler() {
                     @Override
-                    public void onEvent(int hash, Transport transport) {
+                    public void onEvent(int hash) {
 
                     }
-                }, new ErrorHandler() {
+                },
+                new ErrorHandler() {
                     @Override
                     public void onError(Throwable error) {
 
@@ -99,21 +106,23 @@ public class SpeedTest {
         System.out.println("total latch pass =>");
         batchLatch.await();
         System.out.println("batch latch pass =>");
+        System.out.println("All requests execute their own callback function");
+
+        System.out.println("-------------------------");
 
         long end = System.currentTimeMillis();
-
-        long result = lossLatch.getCount() * 1000 / (end - start);
+        long result = COUNTS * 1000 / (end - start);
         System.out.println(COUNTS + " request in " + (end - start) + " ms");
         System.out.println("request tps: " + result);
-        System.out.println("-------------------------");
-        System.out.println("request timeout: " + (COUNTS - lossLatch.getCount()));
 
         System.out.println("-------------------------");
+
+        System.out.println("request timeout: " + (COUNTS - lossLatch.getCount()));
         System.out.println("request lose: " + ((double) (COUNTS - lossLatch.getCount())) * 100 / COUNTS + "%");
+
 
         node2.terminate();
         node1.terminate();
     }
+
 }
-
-
