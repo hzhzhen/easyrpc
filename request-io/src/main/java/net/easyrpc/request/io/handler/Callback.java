@@ -1,6 +1,6 @@
 package net.easyrpc.request.io.handler;
 
-import net.easyrpc.request.io.error.FailError;
+import net.easyrpc.request.io.error.RemoteError;
 import net.easyrpc.request.io.error.TimeoutError;
 
 public interface Callback {
@@ -8,5 +8,5 @@ public interface Callback {
 
     void onTimeout(TimeoutError error);
 
-    void onFail(FailError error);
+    void onFail(RemoteError error);
 }

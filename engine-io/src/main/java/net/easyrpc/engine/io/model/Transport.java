@@ -33,6 +33,8 @@ public class Transport implements Comparable<Transport> {
         }
     }
 
+
+
     @Override
     public int compareTo(@NotNull Transport other) {
         if (other.hashCode() == hashCode()) return 0;

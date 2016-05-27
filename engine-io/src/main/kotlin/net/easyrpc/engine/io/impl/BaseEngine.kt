@@ -1,5 +1,6 @@
 package net.easyrpc.engine.io.impl
 
+import com.alibaba.fastjson.JSON
 import net.easyrpc.engine.io.Engine
 import net.easyrpc.engine.io.handler.ConnectHandler
 import net.easyrpc.engine.io.handler.DataHandler
@@ -7,7 +8,10 @@ import net.easyrpc.engine.io.handler.ErrorHandler
 import net.easyrpc.engine.io.model.Message
 import net.easyrpc.engine.io.model.Transport
 import net.easyrpc.engine.io.protocol.EngineProtocol
+import java.io.BufferedReader
+import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
@@ -33,7 +37,7 @@ open class BaseEngine : Engine {
     private val selector = Selector.open()
 
     //事件轮询线程
-    private val main = Executors.newSingleThreadScheduledExecutor()
+    private val main = Executors.newScheduledThreadPool(2)
     private val net = Executors.newSingleThreadExecutor() //连接为单线程池执行
     private val event = Executors.newFixedThreadPool(4)
 
@@ -173,4 +177,33 @@ open class BaseEngine : Engine {
 
     private data class Acceptor(val address: InetSocketAddress, val ssc: ServerSocketChannel,
                                 val accept: ConnectHandler, val error: ErrorHandler)
+
+    class JsonEngineProtocol : EngineProtocol {
+
+        private val service = Executors.newSingleThreadExecutor()
+
+        override fun antiSerialize(bytes: ByteArray, callback: EngineProtocol.AntiSerializeCallback) {
+            service.submit {
+                BufferedReader(InputStreamReader(ByteArrayInputStream(bytes))).use {
+                    while (true) {
+                        val line = it.readLine() ?: break
+                        try {
+                            callback.onSerialize(JSON.parseObject(line, Message::class.java));
+                        } catch(ignore: Exception) {
+                        }
+                    }
+                }
+            }
+        }
+
+        override fun serialize(message: Message, callback: EngineProtocol.SerializeCallBack) {
+            service.submit({
+                callback.onAntiSerialize((JSON.toJSONString(message) + "\n").toByteArray())
+            });
+        }
+
+        override fun close() {
+            service.shutdownNow()
+        }
+    }
 }

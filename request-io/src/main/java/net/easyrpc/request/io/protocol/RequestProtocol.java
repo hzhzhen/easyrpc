@@ -4,7 +4,7 @@ import net.easyrpc.request.io.model.Request;
 import net.easyrpc.request.io.model.Response;
 
 public interface RequestProtocol {
-
+    
     Request antiSerializeRequest(byte[] bytes);
 
     byte[] serializeRequest(Request request);
