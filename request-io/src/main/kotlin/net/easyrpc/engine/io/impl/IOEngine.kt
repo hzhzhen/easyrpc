@@ -1,6 +1,5 @@
 package net.easyrpc.engine.io.impl
 
-import com.alibaba.fastjson.JSON
 import net.easyrpc.engine.io.Engine
 import net.easyrpc.engine.io.handler.ConnectHandler
 import net.easyrpc.engine.io.handler.ErrorHandler
@@ -11,54 +10,53 @@ import net.easyrpc.engine.io.protocol.EngineProtocol.Message
 import net.easyrpc.engine.io.protocol.RequestProtocol
 import net.easyrpc.engine.io.protocol.RequestProtocol.Response
 import net.easyrpc.engine.io.protocol.Status
-import java.io.BufferedReader
-import java.io.ByteArrayInputStream
 import java.io.IOException
-import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.ReentrantLock
 
-/**
- * @author chpengzh
- */
 open class IOEngine : Engine {
 
     //编码协议,默认为Json编码
     protected var engineProtocol: EngineProtocol = JsonEngineProtocol()
     protected var requestProtocol: RequestProtocol = JsonRequestProtocol()
 
+    //handler
     protected val eventHandlers = ConcurrentHashMap<String, (Int, Long, ByteArray) -> Unit>()
     protected val requestHandlers = ConcurrentHashMap<String, RequestHandler>()
 
+    //server & transport
     private val servers = ConcurrentHashMap<InetSocketAddress, Acceptor>()
     private val transports = ConcurrentHashMap<Int, Transport>()
-    private val messageQueue = ConcurrentLinkedQueue<MessageTask>()
 
+    //task container
+    private val messageQueue = ConcurrentLinkedQueue<MessageTask>()
     private val requestContainer = RequestContainer()
 
     //IO事件处理Selector
     private val selector = Selector.open()
 
+    //work executor service
     private val main = Executors.newSingleThreadScheduledExecutor()     //事件轮询线程
-    private val net = Executors.newSingleThreadExecutor()               //连接为单线程池执行
+    //TODO : 使用协程来替换事件执行线程池
+    //issue: https://github.com/chpengzh/easyrpc/issues/1
     private val eventService = Executors.newFixedThreadPool(10)         //事件执行线程
 
-    //事件轮询周期
+    //main event polling time unit
     private val POLLING: Long = 50 //time unit: μs
     private val POLLING_UNIT = TimeUnit.MICROSECONDS
 
     constructor() {
         subscribeRequest()//初始化Request-IO
-        main.scheduleWithFixedDelay({//高频主事件轮询
+        main.scheduleWithFixedDelay({//事件轮询
             ioPolling()//连接数据轮询
             acceptPolling()//请求连接轮询
             requestContainer.update()//请求任务状态更新
@@ -71,49 +69,45 @@ open class IOEngine : Engine {
         this.requestProtocol = requestProtocol
     }
 
+    @Synchronized
     override fun connect(address: InetSocketAddress, onSuccess: ConnectHandler, onError: ErrorHandler): Engine {
-        net.submit {
-            try {
-                val channel = SocketChannel.open()
-                channel.connect(address)
-                channel.configureBlocking(false)
-                val transport = Transport(channel, onError)
-                channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
-                transports.put(transport.hashCode(), transport)
-                onSuccess.onEvent(transport.hashCode())
-            } catch(error: IOException) {
-                onError.onError(error)
-            }
+        try {
+            val channel = SocketChannel.open()
+            channel.connect(address)
+            channel.configureBlocking(false)
+            val transport = Transport(channel, onError)
+            channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
+            transports.put(transport.hashCode(), transport)
+            onSuccess.onEvent(transport.hashCode())
+        } catch(error: IOException) {
+            onError.onError(error)
         }
         return this
     }
 
+    @Synchronized
     override fun listen(address: InetSocketAddress, onAccept: ConnectHandler, onError: ErrorHandler): Engine {
-        net.submit {
-            if (servers[address] != null) return@submit
-            val ssc = ServerSocketChannel.open().bind(address).configureBlocking(false) as ServerSocketChannel
-            servers[address] = Acceptor(ssc = ssc, accept = onAccept, error = onError)
-        }
+        if (servers[address] != null) return this
+        val ssc = ServerSocketChannel.open().bind(address).configureBlocking(false) as ServerSocketChannel
+        servers[address] = Acceptor(ssc = ssc, accept = onAccept, error = onError)
         return this
     }
 
+    @Synchronized
     override fun disconnect(hash: Int) {
-        net.submit {
-            val transport = transports[hash];
-            if (transport != null) {
-                transport.channel.close()
-                transports.remove(hash)
-            }
+        val transport = transports[hash];
+        if (transport != null) {
+            transport.channel.close()
+            transports.remove(hash)
         }
     }
 
+    @Synchronized
     override fun close(address: InetSocketAddress) {
-        net.submit {
-            val acceptor = servers[address]
-            if (acceptor != null) {
-                acceptor.ssc.close()
-                servers.remove(address)
-            }
+        val acceptor = servers[address]
+        if (acceptor != null) {
+            acceptor.ssc.close()
+            servers.remove(address)
         }
     }
 
@@ -147,7 +141,6 @@ open class IOEngine : Engine {
 
         transports.forEach({ this.disconnect(it.hashCode()) })
         servers.forEach({ address, acceptor -> close(address) })
-        net.shutdown()
     }
 
     //send/response 的消息订阅
@@ -162,8 +155,8 @@ open class IOEngine : Engine {
                 response = Response(id, Status.NOT_FOUND.code, Status.NOT_FOUND.message.toByteArray())
             } else {
                 try {
-                    response = Response(id, Status.OK.code,
-                            handler.onData(request.data) ?: ByteArray(0, { i -> '\u0000'.toByte() }))
+                    response = Response(id, Status.OK.code, handler.onData(request.data) ?:
+                            ByteArray(0, { i -> '\u0000'.toByte() }))
                 } catch (e: Exception) {
                     response = Response(id, Status.REMOTE_ERROR.code, e.toString().toByteArray())
                 }
@@ -256,7 +249,7 @@ open class IOEngine : Engine {
     }
 
     //向消息队列中添加消息
-    private fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
+    protected fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
         val task = MessageTask(transport.hashCode())
         task.obtain(Message(task.hashCode().toLong(), tag, bytes))
         messageQueue.add(task)
@@ -272,14 +265,20 @@ open class IOEngine : Engine {
         }
     }
 
+    /***
+     * TODO: 使用自定义行为的线程池进行更新并比较二者效率
+     * issue: https://github.com/chpengzh/easyrpc/issues/3
+     */
     private inner class RequestContainer {
 
-        val tasks = ConcurrentHashMap<String, Task> ()
-        val updateLock: ReentrantLock = ReentrantLock()
+        val tasks = HashMap<String, Task> ()
 
+        /***
+         * 在主事件轮询线程中更新 container
+         */
         fun update() {
-            updateLock.apply {
-                val now = System.currentTimeMillis();
+            val now = System.currentTimeMillis();
+            synchronized(this, {
                 tasks.entries.removeAll {
                     if (now > it.value.timestamp + it.value.timeout) {
                         eventService.execute {
@@ -295,27 +294,28 @@ open class IOEngine : Engine {
                         return@removeAll false
                     }
                 }
-            }
+            })
         }
 
+        /***
+         * 向容器中添加添加一个 request 任务
+         */
+        @Synchronized
         fun add(tcpHash: Int, id: Long, request: BaseRequest) {
-            updateLock.apply {
-                tasks.put("$tcpHash-$id", Task(request = request, timeout = request.timeout()))
-            }
+            tasks.put("$tcpHash-$id", Task(request = request, timeout = request.timeout()))
         }
 
+        /***
+         * 从容器中取出一个 request task
+         */
+        @Synchronized
         fun remove(tcpHash: Int, id: Long): BaseRequest? {
-            updateLock.lock()
-            try {
-                val task = tasks["$tcpHash-$id"]
-                if (task == null) {
-                    return null
-                } else {
-                    tasks.remove("$tcpHash-$id")
-                    return task.request;
-                }
-            } finally {
-                updateLock.unlock()
+            val task = tasks["$tcpHash-$id"]
+            if (task == null) {
+                return null
+            } else {
+                tasks.remove("$tcpHash-$id")
+                return task.request;
             }
         }
 
@@ -323,58 +323,4 @@ open class IOEngine : Engine {
     }
 
     inner class Transport(var channel: SocketChannel, var errorHandler: ErrorHandler)
-}
-
-class JsonEngineProtocol : EngineProtocol {
-
-    private val service = Executors.newSingleThreadExecutor()
-
-    override fun antiSerialize(bytes: ByteArray, callback: EngineProtocol.AntiSerializeCallback) {
-        service.submit {
-            BufferedReader(InputStreamReader(ByteArrayInputStream(bytes))).use {
-                while (true) {
-                    val line = it.readLine() ?: break
-                    try {
-                        callback.onSerialize(JSON.parseObject(line, Message::class.java));
-                    } catch(ignore: Exception) {
-                        //ignore.printStackTrace()
-                    }
-                }
-            }
-        }
-    }
-
-    override fun serialize(message: Message, callback: EngineProtocol.SerializeCallBack) {
-        service.submit({
-            callback.onAntiSerialize((JSON.toJSONString(message) + "\n").toByteArray())
-        });
-    }
-
-    override fun close() {
-        service.shutdownNow()
-    }
-}
-
-class JsonRequestProtocol : RequestProtocol {
-
-    override fun antiSerializeRequest(bytes: ByteArray): RequestProtocol.Request? {
-        try {
-            return JSON.parseObject<RequestProtocol.Request>(bytes, RequestProtocol.Request::class.java)
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
-    override fun serializeRequest(request: RequestProtocol.Request): ByteArray = JSON.toJSONBytes(request)
-
-    override fun antiSerializeResponse(bytes: ByteArray): Response? {
-        try {
-            return JSON.parseObject<Response>(bytes, Response::class.java)
-        } catch (e: Exception) {
-            return null
-        }
-    }
-
-    override fun serializeResponse(response: Response): ByteArray = JSON.toJSONBytes(response);
-
 }
