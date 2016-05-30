@@ -1,4 +1,4 @@
-package net.easyrpc.engine.io;
+package net.easyrpc.engine.io.api;
 
 import net.easyrpc.engine.io.handler.ConnectHandler;
 import net.easyrpc.engine.io.handler.ErrorHandler;
@@ -7,17 +7,7 @@ import net.easyrpc.engine.io.model.BaseRequest;
 
 import java.net.InetSocketAddress;
 
-public interface Engine {
-
-    /***
-     * 通过 socket 连接到另外一个Engine
-     *
-     * @param address   连接地址
-     * @param onSuccess 连接成功回调
-     * @param onError   连接失败或连接断开执行回调
-     * @return this
-     */
-    Engine connect(InetSocketAddress address, ConnectHandler onSuccess, ErrorHandler onError);
+public interface Server {
 
     /***
      * 监听一个本地 socket 端口

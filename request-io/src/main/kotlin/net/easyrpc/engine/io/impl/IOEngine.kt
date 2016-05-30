@@ -1,6 +1,8 @@
 package net.easyrpc.engine.io.impl
 
-import net.easyrpc.engine.io.Engine
+import net.easyrpc.engine.io.api.Client
+import net.easyrpc.engine.io.api.Engine
+import net.easyrpc.engine.io.api.Server
 import net.easyrpc.engine.io.handler.ConnectHandler
 import net.easyrpc.engine.io.handler.ErrorHandler
 import net.easyrpc.engine.io.handler.RequestHandler
@@ -23,15 +25,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-open class IOEngine : Engine {
-
-    //编码协议,默认为Json编码
-    protected var engineProtocol: EngineProtocol = JsonEngineProtocol()
-    protected var requestProtocol: RequestProtocol = JsonRequestProtocol()
+internal class IOEngine(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
+                        val requestProtocol: RequestProtocol = JsonRequestProtocol(),
+                        val serverMode: Boolean = true) : Client, Server, Engine {
 
     //handler
-    protected val eventHandlers = ConcurrentHashMap<String, (Int, Long, ByteArray) -> Unit>()
-    protected val requestHandlers = ConcurrentHashMap<String, RequestHandler>()
+    private val eventHandlers = ConcurrentHashMap<String, (Int, Long, ByteArray) -> Unit>()
+    private val requestHandlers = ConcurrentHashMap<String, RequestHandler>()
 
     //server & transport
     private val servers = ConcurrentHashMap<InetSocketAddress, Acceptor>()
@@ -55,21 +55,15 @@ open class IOEngine : Engine {
     private val HEARTBEAT: Long = 50
     private val HEARTBEAT_UNIT = TimeUnit.MILLISECONDS
 
-    constructor() {
+    init {
         subscribeRequest()//初始化Request-IO
         main.scheduleWithFixedDelay({//事件轮询
             ioPolling()//连接数据轮询
-            acceptPolling()//请求连接轮询
+            if (serverMode) acceptPolling()//请求连接轮询
         }, 0, POLLING, POLLING_UNIT)
         main.scheduleWithFixedDelay({
             requestContainer.update()//请求任务状态更新
         }, 0, HEARTBEAT, HEARTBEAT_UNIT)
-    }
-
-    constructor(protocol: EngineProtocol, requestProtocol: RequestProtocol) : this() {
-        this.engineProtocol.close()
-        this.engineProtocol = protocol
-        this.requestProtocol = requestProtocol
     }
 
     @Synchronized
@@ -238,7 +232,7 @@ open class IOEngine : Engine {
     }
 
     //向消息队列中添加消息
-    protected fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
+    private fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
         val id = serializeId.incrementAndGet()
         if (transport.taskQueue.add(Message(id, tag, bytes))) return id
         return -1
