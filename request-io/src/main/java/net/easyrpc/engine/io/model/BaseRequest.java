@@ -6,11 +6,6 @@ package net.easyrpc.engine.io.model;
 public abstract class BaseRequest {
 
     /***
-     * 请求响应回调 Important!
-     */
-    public abstract void onResponse(byte[] data);
-
-    /***
      * 连接 hash 值, 在连接建立的时候可以获取
      */
     public abstract int getTransportHash();
@@ -26,11 +21,23 @@ public abstract class BaseRequest {
     public abstract byte[] getData();
 
     /***
-     * 请求响应超时执行回调 Important!
-     *
-     * @param message 超时信息
+     * 请求响应回调 Important!
      */
-    public void onTimeout(String message) {
+    public abstract void onResponse(byte[] responseData);
+
+    /***
+     * 请求超时时间,请根据网络情况重载
+     *
+     * @return 超时时间, 单位ms
+     */
+    public long timeout() {
+        return 2000;
+    }
+
+    /***
+     * 请求开始执行
+     */
+    public void onStart(long serializeId) {
 
     }
 
@@ -45,19 +52,19 @@ public abstract class BaseRequest {
     }
 
     /***
-     * 请求结束执行回调
+     * 请求响应超时执行回调 Important!
+     *
+     * @param message 超时信息
      */
-    public void onComplete() {
+    public void onTimeout(String message) {
 
     }
 
     /***
-     * 请求超时时间,请根据网络情况重载
-     *
-     * @return 超时时间, 单位ms
+     * 请求结束执行回调
      */
-    public long timeout() {
-        return 2000;
+    public void onComplete() {
+
     }
 
 }

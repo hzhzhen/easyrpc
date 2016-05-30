@@ -9,32 +9,32 @@ import net.easyrpc.engine.io.model.BaseRequest;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author chpengzh
  */
 public class SpeedTest {
 
-    public static final int COUNTS = 10000;
-    public static CountDownLatch batchLatch;
-    public static CountDownLatch totalLatch;
-    public static CountDownLatch lossLatch;
-    public static long start;
+    public static final int COUNTS = 100000;
+    public static final long TIMEOUT = 5000;
 
+    public static final AtomicLong start = new AtomicLong(0);
+    public static final AtomicLong batch = new AtomicLong(0);
+    public static final AtomicLong total = new AtomicLong(0);
+    public static final AtomicLong loss = new AtomicLong(0);
+    public static final AtomicLong success = new AtomicLong(0);
+
+    public static long begin;
     public static Engine node1;
     public static Engine node2;
 
     public static void main(String... args) throws IOException, InterruptedException {
 
-        totalLatch = new CountDownLatch(COUNTS);
-        batchLatch = new CountDownLatch(COUNTS);
-        lossLatch = new CountDownLatch(COUNTS);
-
         node1 = new IOEngine().listen(new InetSocketAddress(8090), new ConnectHandler() {
             @Override
             public void onEvent(final int tcpHash) {
-                start = System.currentTimeMillis();
+                begin = System.currentTimeMillis();
                 for (int j = 0; j < COUNTS; j++) {
                     node1.send(new BaseRequest() {
                         @Override
@@ -53,24 +53,35 @@ public class SpeedTest {
                         }
 
                         @Override
+                        public void onStart(long serializeId) {
+                            start.incrementAndGet();
+                        }
+
+                        @Override
                         public void onResponse(byte[] data) {
-                            batchLatch.countDown();
+                            batch.incrementAndGet();
+                            success.incrementAndGet();
                         }
 
                         @Override
                         public void onFail(int status, String message) {
-                            batchLatch.countDown();
+                            batch.incrementAndGet();
                         }
 
                         @Override
                         public void onTimeout(String message) {
-                            batchLatch.countDown();
-                            lossLatch.countDown();
+                            batch.incrementAndGet();
+                            loss.incrementAndGet();
                         }
 
                         @Override
                         public void onComplete() {
-                            totalLatch.countDown();
+                            total.incrementAndGet();
+                        }
+
+                        @Override
+                        public long timeout() {
+                            return TIMEOUT;
                         }
                     });
                 }
@@ -86,7 +97,7 @@ public class SpeedTest {
         node2 = new IOEngine().onRequest("handler", new RequestHandler() {
             @Override
             public byte[] onData(byte[] data) {
-                return "ok".getBytes();
+                return "start".getBytes();
             }
         }).connect(new InetSocketAddress("localhost", 8090),
                 new ConnectHandler() {
@@ -102,24 +113,24 @@ public class SpeedTest {
                     }
                 });
 
-        totalLatch.await();
-        System.out.println("total latch pass =>");
-        batchLatch.await();
-        System.out.println("batch latch pass =>");
-        System.out.println("All requests execute their own callback function");
+        Thread.sleep(TIMEOUT+5000);
+        System.out.println("start pass =>" + start.get());
+        System.out.println("success pass =>" + success.get());
+        System.out.println("loss pass =>" + loss.get());
+        System.out.println("total pass =>" + total.get());
+        System.out.println("batch pass =>" + batch.get());
 
         System.out.println("-------------------------");
 
         long end = System.currentTimeMillis();
-        long result = COUNTS * 1000 / (end - start);
-        System.out.println(COUNTS + " request in " + (end - start) + " ms");
+        long result = total.get() * 1000 / (end - begin);
+        System.out.println(total.get() + " request in " + (end - begin) + " ms");
         System.out.println("request tps: " + result);
 
         System.out.println("-------------------------");
 
-        System.out.println("request timeout: " + (COUNTS - lossLatch.getCount()));
-        System.out.println("request lose: " + ((double) (COUNTS - lossLatch.getCount())) * 100 / COUNTS + "%");
-
+        System.out.println("request timeout: " + loss.get());
+        System.out.println("request lose: " + ((double) loss.get()) * 100 / COUNTS + "%");
 
         node2.terminate();
         node1.terminate();

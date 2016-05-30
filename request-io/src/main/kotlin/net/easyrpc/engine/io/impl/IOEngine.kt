@@ -17,11 +17,11 @@ import java.nio.channels.SelectionKey
 import java.nio.channels.Selector
 import java.nio.channels.ServerSocketChannel
 import java.nio.channels.SocketChannel
-import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 open class IOEngine : Engine {
 
@@ -38,29 +38,34 @@ open class IOEngine : Engine {
     private val transports = ConcurrentHashMap<Int, Transport>()
 
     //task container
-    private val messageQueue = ConcurrentLinkedQueue<MessageTask>()
     private val requestContainer = RequestContainer()
+    private val serializeId = AtomicLong(0)
 
     //IO事件处理Selector
     private val selector = Selector.open()
 
     //work executor service
-    private val main = Executors.newSingleThreadScheduledExecutor()     //事件轮询线程
+    private val main = Executors.newScheduledThreadPool(2)     //事件轮询线程
     //TODO : 使用协程来替换事件执行线程池
     //issue: https://github.com/chpengzh/easyrpc/issues/1
-    private val eventService = Executors.newFixedThreadPool(10)         //事件执行线程
+    private val eventService = Executors.newFixedThreadPool(4)         //事件执行线程
 
     //main event polling time unit
     private val POLLING: Long = 50 //time unit: μs
     private val POLLING_UNIT = TimeUnit.MICROSECONDS
+
+    private val HEARTBEAT: Long = 50
+    private val HEARTBEAT_UNIT = TimeUnit.MILLISECONDS
 
     constructor() {
         subscribeRequest()//初始化Request-IO
         main.scheduleWithFixedDelay({//事件轮询
             ioPolling()//连接数据轮询
             acceptPolling()//请求连接轮询
-            requestContainer.update()//请求任务状态更新
         }, 0, POLLING, POLLING_UNIT)
+        main.scheduleWithFixedDelay({
+            requestContainer.update()//请求任务状态更新
+        }, 0, HEARTBEAT, HEARTBEAT_UNIT)
     }
 
     constructor(protocol: EngineProtocol, requestProtocol: RequestProtocol) : this() {
@@ -116,21 +121,13 @@ open class IOEngine : Engine {
         return this
     }
 
-    override fun send(request: BaseRequest) {
-        val transport = transports[request.transportHash]
-        if (transport == null) {
-            eventService.submit {
-                try {
-                    request.onTimeout("Transport@${request.transportHash} is not exists!")
-                } finally {
-                    request.onComplete()
-                }
-            }
-        } else {
-            val id = appendQueue(transport, "/request-io/request",
-                    requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data)))
-            requestContainer.add(request.transportHash, id, request);
-        }
+    override fun send(request: BaseRequest): Boolean {
+        val transport = transports[request.transportHash] ?: return false
+        val id = appendQueue(transport, "/request-io/request",
+                requestProtocol.serializeRequest(RequestProtocol.Request(request.tag, request.data)))
+        if (id == -1L) return false
+        requestContainer.add(id, request);
+        return true
     }
 
     override fun terminate() {
@@ -165,15 +162,17 @@ open class IOEngine : Engine {
                     requestProtocol.serializeResponse(response.meta(id)))
         })
         eventHandlers.put("/request-io/response", { tcpHash, id, packageData ->
-            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@put
-            val request = requestContainer.remove(tcpHash, response.requestId) ?: return@put
-            try {
-                when {
-                    response.status == Status.OK.code -> request.onResponse(response.data)
 
-                    else -> request.onFail(response.status, "Request sending to transport@" +
+            val response = requestProtocol.antiSerializeResponse(packageData) ?: return@put
+
+            val request = requestContainer.remove(response.requestId) ?: return@put
+
+            try {
+                if (response.status == Status.OK.code)
+                    request.onResponse(response.data)
+                else
+                    request.onFail(response.status, "Request sending to transport@" +
                             "$tcpHash fail for ${String(response.data)}")
-                }
             } finally {
                 request.onComplete()
             }
@@ -191,12 +190,8 @@ open class IOEngine : Engine {
                         readMessage(transport)
                     } else if (it.isWritable) {
                         do {
-                            val event = messageQueue.poll()
-                            if (event != null) {
-                                val tcp = transports[event.tcpHash]
-                                val msg = event.message
-                                if (tcp != null && msg != null) sendMessage(tcp, msg)
-                            } else break;
+                            val event = transport.taskQueue.poll() ?: break
+                            sendMessage(transport, event)
                         } while (true)
                     }
                 } catch (e: IOException) {
@@ -227,42 +222,34 @@ open class IOEngine : Engine {
 
     //读消息
     private fun readMessage(transport: Transport) {
-        transport.channel.blockingLock().apply {
-            val buffer = ByteBuffer.allocate(32 * 1024)
-            val flag = transport.channel.read(buffer);
-            if (flag == -1) throw IOException("session disconnected")
-            if (buffer.position() == 0) return
-            val bytes = buffer.array().copyOf(buffer.position())
-            engineProtocol.antiSerialize(bytes, {
-                eventService.submit { eventHandlers[it.tag]?.invoke(transport.hashCode(), it.id, it.data) }
-            })
-        }
+        val buffer = ByteBuffer.allocate(32 * 1024)
+        val flag = transport.channel.read(buffer);
+        if (flag == -1) throw IOException("session disconnected")
+        if (buffer.position() == 0) return
+        val bytes = buffer.array().copyOf(buffer.position())
+        engineProtocol.antiSerialize(bytes, {
+            eventService.submit { eventHandlers[it.tag]?.invoke(transport.hashCode(), it.id, it.data) }
+        })
     }
 
     //写消息
     private fun sendMessage(transport: Transport, message: Message) {
-        transport.channel.blockingLock().apply {
-            engineProtocol.serialize(message, {
-                transport.channel.write(ByteBuffer.wrap(it))
-            })
-        }
+        engineProtocol.serialize(message, {
+            transport.channel.write(ByteBuffer.wrap(it))
+        })
     }
 
     //向消息队列中添加消息
     protected fun appendQueue(transport: Transport, tag: String, bytes: ByteArray): Long {
-        val task = MessageTask(transport.hashCode())
-        task.obtain(Message(task.hashCode().toLong(), tag, bytes))
-        messageQueue.add(task)
-        return task.hashCode().toLong()
+        val id = serializeId.incrementAndGet()
+        if (transport.taskQueue.add(Message(id, tag, bytes))) return id
+        return -1
     }
 
-    private inner class Acceptor(val ssc: ServerSocketChannel, val accept: ConnectHandler, val error: ErrorHandler)
+    inner class Acceptor(val ssc: ServerSocketChannel, val accept: ConnectHandler, val error: ErrorHandler)
 
-    private inner class MessageTask(val tcpHash: Int) {
-        var message: Message? = null;
-        fun obtain(msg: Message) {
-            message = msg;
-        }
+    inner class Transport(var channel: SocketChannel, var errorHandler: ErrorHandler) {
+        val taskQueue: ConcurrentLinkedQueue<Message> = ConcurrentLinkedQueue()
     }
 
     /***
@@ -271,7 +258,7 @@ open class IOEngine : Engine {
      */
     private inner class RequestContainer {
 
-        val tasks = HashMap<String, Task> ()
+        val tasks = ConcurrentHashMap<Long, Task> ()
 
         /***
          * 在主事件轮询线程中更新 container
@@ -301,20 +288,21 @@ open class IOEngine : Engine {
          * 向容器中添加添加一个 request 任务
          */
         @Synchronized
-        fun add(tcpHash: Int, id: Long, request: BaseRequest) {
-            tasks.put("$tcpHash-$id", Task(request = request, timeout = request.timeout()))
+        fun add(id: Long, request: BaseRequest) {
+            tasks.put(id, Task(request = request, timeout = request.timeout()))
+            eventService.execute { request.onStart(id) }
         }
 
         /***
          * 从容器中取出一个 request task
          */
         @Synchronized
-        fun remove(tcpHash: Int, id: Long): BaseRequest? {
-            val task = tasks["$tcpHash-$id"]
+        fun remove(id: Long): BaseRequest? {
+            val task = tasks[id]
             if (task == null) {
                 return null
             } else {
-                tasks.remove("$tcpHash-$id")
+                tasks.remove(id)
                 return task.request;
             }
         }
@@ -322,5 +310,5 @@ open class IOEngine : Engine {
         inner class Task(val request: BaseRequest, val timeout: Long, var timestamp: Long = System.currentTimeMillis())
     }
 
-    inner class Transport(var channel: SocketChannel, var errorHandler: ErrorHandler)
+
 }

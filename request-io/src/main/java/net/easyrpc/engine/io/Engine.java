@@ -57,7 +57,7 @@ public interface Engine {
      *
      * @param request 异步请求任务
      */
-    void send(BaseRequest request);
+    boolean send(BaseRequest request);
 
     /***
      * 关闭 Engine 实例
