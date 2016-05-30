@@ -46,8 +46,6 @@ open class IOEngine : Engine {
 
     //work executor service
     private val main = Executors.newScheduledThreadPool(2)     //事件轮询线程
-    //TODO : 使用协程来替换事件执行线程池
-    //issue: https://github.com/chpengzh/easyrpc/issues/1
     private val eventService = Executors.newFixedThreadPool(4)         //事件执行线程
 
     //main event polling time unit
@@ -252,10 +250,6 @@ open class IOEngine : Engine {
         val taskQueue: ConcurrentLinkedQueue<Message> = ConcurrentLinkedQueue()
     }
 
-    /***
-     * TODO: 使用自定义行为的线程池进行更新并比较二者效率
-     * issue: https://github.com/chpengzh/easyrpc/issues/3
-     */
     private inner class RequestContainer {
 
         val tasks = ConcurrentHashMap<Long, Task> ()
