@@ -147,8 +147,8 @@ public class DataFlowTest {
 
         System.out.println("-------------------------");
 
-        long result = complete.get() * 1000 / (end - begin);
-        System.out.println(complete.get() + " request in " + (end - begin) + " ms");
+        long result = success.get() * 1000 / (end - begin);
+        System.out.println(success.get() + " request in " + (end - begin) + " ms");
         System.out.println("request tps: " + result);
 
         System.out.println("-------------------------");

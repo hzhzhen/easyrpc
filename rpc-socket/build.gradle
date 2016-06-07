@@ -5,6 +5,7 @@ apply plugin: 'java'
 
 dependencies {
     compile project(':request-io')
+    compile project(':rpc-core')
 
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }

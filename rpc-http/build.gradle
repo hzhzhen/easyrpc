@@ -4,5 +4,8 @@ version project_version
 apply plugin: 'java'
 
 dependencies {
+    compile project(':rpc-core')
+    compile 'com.squareup.retrofit2:retrofit:2.0.2'
+
     testCompile group: 'junit', name: 'junit', version: '4.11'
 }

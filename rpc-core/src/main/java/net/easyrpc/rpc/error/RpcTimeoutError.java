@@ -6,6 +6,10 @@ import java.lang.reflect.Method;
  * 调用超时异常
  */
 public class RpcTimeoutError extends Exception {
+    public RpcTimeoutError(String message) {
+        super(message);
+    }
+
     public RpcTimeoutError(Method method, long timeout) {
         super("Fetch result from remote fail for timeout:" +
                 " [ method=" + method.getName() + ", timeout=" + timeout + " ]");

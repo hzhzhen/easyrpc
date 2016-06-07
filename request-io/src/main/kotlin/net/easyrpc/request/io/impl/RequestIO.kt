@@ -58,8 +58,8 @@ internal class IONode(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
     private val eventService = Executors.newFixedThreadPool(4)//事件执行线程
 
     //main event polling time unit
-    private val POLLING: Long = 50 //time unit: μs
-    private val POLLING_UNIT = TimeUnit.MICROSECONDS
+    private val POLLING: Long = 1 //time unit: μs
+    private val POLLING_UNIT = TimeUnit.MILLISECONDS
 
     private val HEARTBEAT: Long = 50
     private val HEARTBEAT_UNIT = TimeUnit.MILLISECONDS
@@ -67,35 +67,37 @@ internal class IONode(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
     init {
         subscribeRequest()//初始化Request-IO
         main.scheduleWithFixedDelay({//事件轮询
-            ioPolling()//连接数据轮询
-            if (serverMode) acceptPolling()//请求连接轮询
+            socketPolling()//连接数据轮询
+            if (serverMode) serverSocketPolling()//请求连接轮询
         }, 0, POLLING, POLLING_UNIT)
         main.scheduleWithFixedDelay({
-            requestContainer.update()//请求任务状态更新
+            requestContainer.poll()//请求任务状态更新
         }, 0, HEARTBEAT, HEARTBEAT_UNIT)
     }
 
     @Synchronized
-    override fun connect(address: InetSocketAddress, onSuccess: ConnectHandler, onError: ErrorHandler): IONode {
+    override fun connect(address: InetSocketAddress, onSuccess: ConnectHandler?, onError: ErrorHandler?): IONode {
         try {
             val channel = SocketChannel.open()
             channel.connect(address)
             channel.configureBlocking(false)
-            val transport = Transport(channel, onError)
+            val transport = Transport(channel, onError ?: ErrorHandler { })
             channel.register(selector, SelectionKey.OP_READ or SelectionKey.OP_WRITE, transport)
             transports.put(transport.hashCode(), transport)
-            onSuccess.onEvent(transport.hashCode())
+            onSuccess?.onEvent(transport.hashCode())
         } catch(error: IOException) {
-            onError.onError(error)
+            onError?.onError(error)
         }
         return this
     }
 
     @Synchronized
-    override fun listen(address: InetSocketAddress, onAccept: ConnectHandler, onError: ErrorHandler): IONode {
+    override fun listen(address: InetSocketAddress, onAccept: ConnectHandler?, onError: ErrorHandler?): IONode {
         if (servers[address] != null) return this
         val ssc = ServerSocketChannel.open().bind(address).configureBlocking(false) as ServerSocketChannel
-        servers[address] = Acceptor(ssc = ssc, accept = onAccept, error = onError)
+        servers[address] = Acceptor(
+                ssc = ssc, accept = onAccept ?: ConnectHandler { }, error = onError ?: ErrorHandler { }
+        )
         return this
     }
 
@@ -190,7 +192,7 @@ internal class IONode(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
     }
 
     //监听连接数据
-    private fun ioPolling() {
+    private fun socketPolling() {
         try {
             selector.selectNow()
             selector.selectedKeys().forEach {
@@ -214,7 +216,7 @@ internal class IONode(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
     }
 
     //监听建立连接
-    private fun acceptPolling() {
+    private fun serverSocketPolling() {
         servers.forEach({ port, acceptor ->
             try {
                 val channel = acceptor.ssc.accept()
@@ -269,7 +271,7 @@ internal class IONode(val engineProtocol: EngineProtocol = JsonEngineProtocol(),
         /***
          * 在主事件轮询线程中更新 container
          */
-        fun update() {
+        fun poll() {
             val now = System.currentTimeMillis();
             synchronized(this, {
                 tasks.entries.removeAll {
