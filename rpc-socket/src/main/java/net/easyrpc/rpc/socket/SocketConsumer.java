@@ -1,4 +1,4 @@
-package net.easyrpc.socket.rpc;
+package net.easyrpc.rpc.socket;
 
 import net.easyrpc.request.io.RequestIO;
 import net.easyrpc.request.io.api.Engine;
@@ -7,7 +7,6 @@ import net.easyrpc.request.io.handler.DataHandler;
 import net.easyrpc.request.io.handler.ErrorHandler;
 import net.easyrpc.rpc.core.ProxyInvoker;
 import net.easyrpc.rpc.error.RpcTimeoutError;
-import net.easyrpc.rpc.protocol.JsonSerializeProtocol;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicReference;

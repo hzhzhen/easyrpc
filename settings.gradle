@@ -1,7 +1,6 @@
 rootProject.name = 'easyrpc'
 include 'request-io'
 include 'rpc-core'
-include 'rpc-http'
 include 'rpc-socket'
 
 

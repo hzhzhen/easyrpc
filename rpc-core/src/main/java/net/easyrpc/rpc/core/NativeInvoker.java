@@ -10,8 +10,7 @@ public class NativeInvoker {
 
     protected final SerializeProtocol protocol;
     protected final Logger log = Logger.getLogger(getClass().getSimpleName());
-
-    public ApplicationContext context;
+    protected ApplicationContext context;
 
     public NativeInvoker(ApplicationContext context) {
         this(context, new JsonSerializeProtocol());

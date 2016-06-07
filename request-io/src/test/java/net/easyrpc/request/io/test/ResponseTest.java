@@ -43,17 +43,7 @@ public class ResponseTest {
             }
         });
 
-        node2 = RequestIO.client().connect(new InetSocketAddress("localhost", 8090), new ConnectHandler() {
-            @Override
-            public void onEvent(int hash) {
-
-            }
-        }, new ErrorHandler() {
-            @Override
-            public void onError(Throwable error) {
-
-            }
-        });
+        node2 = RequestIO.client().connect(new InetSocketAddress("localhost", 8090), null, null);
     }
 
     @AfterClass

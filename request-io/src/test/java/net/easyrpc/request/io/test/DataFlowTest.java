@@ -4,7 +4,6 @@ import net.easyrpc.request.io.RequestIO;
 import net.easyrpc.request.io.api.Client;
 import net.easyrpc.request.io.api.Server;
 import net.easyrpc.request.io.handler.ConnectHandler;
-import net.easyrpc.request.io.handler.ErrorHandler;
 import net.easyrpc.request.io.handler.RequestHandler;
 import net.easyrpc.request.io.model.BaseRequest;
 import org.junit.AfterClass;
@@ -37,31 +36,14 @@ public class DataFlowTest {
             public void onEvent(final int tcpHash) {
                 DataFlowTest.tcpHash.set(tcpHash);
             }
-        }, new ErrorHandler() {
-            @Override
-            public void onError(Throwable error) {
-
-            }
-        });
+        }, null);
 
         node2 = RequestIO.client().onRequest("handler", new RequestHandler() {
             @Override
             public byte[] onData(byte[] data) {
                 return "start".getBytes();
             }
-        }).connect(new InetSocketAddress("localhost", 8090),
-                new ConnectHandler() {
-                    @Override
-                    public void onEvent(int hash) {
-
-                    }
-                },
-                new ErrorHandler() {
-                    @Override
-                    public void onError(Throwable error) {
-
-                    }
-                });
+        }).connect(new InetSocketAddress("localhost", 8090), null, null);
     }
 
     @AfterClass
@@ -135,7 +117,7 @@ public class DataFlowTest {
             });
         }
 
-        latch.await(TIMEOUT + 1000, TimeUnit.MILLISECONDS);
+        latch.await(TIMEOUT + 2000, TimeUnit.MILLISECONDS);
 
         long end = System.currentTimeMillis();
 

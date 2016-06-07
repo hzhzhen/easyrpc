@@ -1,4 +1,4 @@
-package net.easyrpc.socket.rpc;
+package net.easyrpc.rpc.socket;
 
 import net.easyrpc.request.io.RequestIO;
 import net.easyrpc.request.io.api.Engine;
@@ -14,7 +14,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /***
- * pro
+ * provider action
+ * - publish: publish a provider resource throw ip address
+ * - terminate: shutdown
  */
 public class SocketProvider extends NativeInvoker {
 

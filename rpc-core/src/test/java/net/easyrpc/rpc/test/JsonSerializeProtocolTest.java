@@ -14,6 +14,7 @@ public class JsonSerializeProtocolTest {
         final byte[] data = protocol.serializeRequest(1L,
                 DemoService.class.getMethod("add", Integer.class, Integer.class), 1, 2);
         final SerializeProtocol.MethodRequest request = protocol.antiSerializeRequest(data);
+
         assert request.invokeId == 1L;
         assert request.method.getName().equals("add");
         assert (int) request.args[0] == 1;
